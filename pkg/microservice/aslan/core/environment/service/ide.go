@@ -206,7 +206,7 @@ func patchDeployment(ctx context.Context, kclient client.Client, selector labels
 		corev1.Container{
 			Name:            types.IDEContainerNameDev,
 			Image:           devImage,
-			ImagePullPolicy: corev1.PullAlways,
+			ImagePullPolicy: corev1.PullIfNotPresent,
 			Command:         []string{"/bin/sh", "-c", "tail -f /dev/null"},
 			WorkingDir:      types.DevmodeWorkDir,
 			Resources: corev1.ResourceRequirements{
@@ -225,7 +225,7 @@ func patchDeployment(ctx context.Context, kclient client.Client, selector labels
 		corev1.Container{
 			Name:            types.IDEContainerNameSidecar,
 			Image:           types.IDESidecarImage,
-			ImagePullPolicy: corev1.PullAlways,
+			ImagePullPolicy: corev1.PullIfNotPresent,
 			Command:         []string{"/bin/sh", "-c", "tail -f /dev/null"},
 			WorkingDir:      types.DevmodeWorkDir,
 			Resources: corev1.ResourceRequirements{
@@ -318,7 +318,7 @@ func patchStatefulSet(ctx context.Context, kclient client.Client, selector label
 		corev1.Container{
 			Name:            types.IDEContainerNameDev,
 			Image:           devImage,
-			ImagePullPolicy: corev1.PullAlways,
+			ImagePullPolicy: corev1.PullIfNotPresent,
 			Command:         []string{"/bin/sh", "-c", "tail -f /dev/null"},
 			WorkingDir:      types.DevmodeWorkDir,
 			Resources: corev1.ResourceRequirements{
@@ -337,7 +337,7 @@ func patchStatefulSet(ctx context.Context, kclient client.Client, selector label
 		corev1.Container{
 			Name:            types.IDEContainerNameSidecar,
 			Image:           types.IDESidecarImage,
-			ImagePullPolicy: corev1.PullAlways,
+			ImagePullPolicy: corev1.PullIfNotPresent,
 			Command:         []string{"/bin/sh", "-c", "tail -f /dev/null"},
 			WorkingDir:      types.DevmodeWorkDir,
 			Resources: corev1.ResourceRequirements{

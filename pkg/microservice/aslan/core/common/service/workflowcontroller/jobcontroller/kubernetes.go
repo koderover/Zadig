@@ -356,7 +356,7 @@ echo $result > %s
 					ImagePullSecrets: ImagePullSecrets,
 					Containers: []corev1.Container{
 						{
-							ImagePullPolicy: corev1.PullAlways,
+							ImagePullPolicy: corev1.PullIfNotPresent,
 							Name:            GetJobContainerName(jobTask.Name),
 							Image:           jobTaskSpec.Plugin.Image,
 							Args:            jobTaskSpec.Plugin.Args,
@@ -481,7 +481,7 @@ func buildJob(jobType, jobImage, jobName, clusterID, currentNamespace string, re
 					},
 					Containers: []corev1.Container{
 						{
-							ImagePullPolicy: corev1.PullAlways,
+							ImagePullPolicy: corev1.PullIfNotPresent,
 							Name:            GetJobContainerName(strings.ReplaceAll(jobTask.Name, "_", "-")),
 							Image:           jobImage,
 							Command:         []string{"/bin/sh", "-c"},
@@ -556,7 +556,7 @@ func BuildCleanJob(jobName, clusterID, workflowName string, taskID int64) (*batc
 					RestartPolicy: corev1.RestartPolicyNever,
 					Containers: []corev1.Container{
 						{
-							ImagePullPolicy: corev1.PullAlways,
+							ImagePullPolicy: corev1.PullIfNotPresent,
 							Name:            jobName,
 							Image:           image,
 							WorkingDir:      workspace,

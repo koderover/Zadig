@@ -117,7 +117,7 @@ func genDebugContainer(imageName string) *corev1.EphemeralContainer {
 			Name:                     ZadigDebugContainerName,
 			Image:                    imageName,
 			Command:                  []string{"tail", "-f", "/dev/null"},
-			ImagePullPolicy:          corev1.PullAlways,
+			ImagePullPolicy:          corev1.PullIfNotPresent,
 			TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
 		},
 	}
