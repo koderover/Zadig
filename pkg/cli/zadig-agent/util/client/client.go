@@ -97,6 +97,7 @@ func New(cfs ...ClientFunc) *Client {
 	r := resty.New()
 	r.SetTransport(&http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		IdleConnTimeout: 0,
 	})
 	r.SetHeader("Content-Type", "application/json").
 		SetHeader("Accept", "application/json").
