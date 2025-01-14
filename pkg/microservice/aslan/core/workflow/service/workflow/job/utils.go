@@ -52,6 +52,7 @@ func FilterServiceVars(serviceName string, deployContents []config.DeployContent
 	}
 
 	service.VariableYaml = serviceEnv.VariableYaml
+	service.OverrideKVs = serviceEnv.OverrideKVs
 	service.ServiceName = serviceName
 	service.Updatable = serviceEnv.Updatable
 	service.UpdateConfig = defaultUpdateConfig

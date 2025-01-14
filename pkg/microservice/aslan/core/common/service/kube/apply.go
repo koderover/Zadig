@@ -43,9 +43,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	commonmodels "github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/repository/models"
-	"github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/repository/models/template"
 	commonrepo "github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/repository/mongodb"
-	"github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/service/repository"
 	commonutil "github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/util"
 	"github.com/koderover/zadig/v2/pkg/setting"
 	kubeclient "github.com/koderover/zadig/v2/pkg/shared/kube/client"
@@ -747,93 +745,93 @@ func CreateOrPatchResource(applyParam *ResourceApplyParam, log *zap.SugaredLogge
 	return res, nil
 }
 
-func PrepareHelmServiceData(applyParam *ResourceApplyParam) (*commonmodels.ProductService, *commonmodels.Service, error) {
-	productInfo := applyParam.ProductInfo
-	productService := applyParam.ProductInfo.GetServiceMap()[applyParam.ServiceName]
-	if productService == nil {
-		if !applyParam.UpdateServiceRevision {
-			return nil, nil, fmt.Errorf("first time online service %s needs to check the update service configuration", applyParam.ServiceName)
-		}
+// func PrepareHelmServiceData(applyParam *ResourceApplyParam) (*commonmodels.ProductService, *commonmodels.Service, error) {
+// 	productInfo := applyParam.ProductInfo
+// 	productService := applyParam.ProductInfo.GetServiceMap()[applyParam.ServiceName]
+// 	if productService == nil {
+// 		if !applyParam.UpdateServiceRevision {
+// 			return nil, nil, fmt.Errorf("first time online service %s needs to check the update service configuration", applyParam.ServiceName)
+// 		}
 
-		productService = &commonmodels.ProductService{
-			ProductName: applyParam.ProductInfo.ProductName,
-			ServiceName: applyParam.ServiceName,
-			Type:        setting.HelmDeployType,
-		}
-		if len(productInfo.Services) == 0 {
-			productInfo.Services = [][]*commonmodels.ProductService{{}}
-		}
-		productInfo.Services[0] = append(productInfo.Services[0], productService)
-	}
+// 		productService = &commonmodels.ProductService{
+// 			ProductName: applyParam.ProductInfo.ProductName,
+// 			ServiceName: applyParam.ServiceName,
+// 			Type:        setting.HelmDeployType,
+// 		}
+// 		if len(productInfo.Services) == 0 {
+// 			productInfo.Services = [][]*commonmodels.ProductService{{}}
+// 		}
+// 		productInfo.Services[0] = append(productInfo.Services[0], productService)
+// 	}
 
-	svcFindOption := &commonrepo.ServiceFindOption{
-		ProductName: applyParam.ProductInfo.ProductName,
-		ServiceName: applyParam.ServiceName,
-		Revision:    productService.Revision,
-	}
-	// use latest svc template if option 'UpdateServiceRevision' is true
-	if applyParam.UpdateServiceRevision {
-		svcFindOption.Revision = 0
-	}
+// 	svcFindOption := &commonrepo.ServiceFindOption{
+// 		ProductName: applyParam.ProductInfo.ProductName,
+// 		ServiceName: applyParam.ServiceName,
+// 		Revision:    productService.Revision,
+// 	}
+// 	// use latest svc template if option 'UpdateServiceRevision' is true
+// 	if applyParam.UpdateServiceRevision {
+// 		svcFindOption.Revision = 0
+// 	}
 
-	svcTemplate, err := repository.QueryTemplateService(svcFindOption, productInfo.Production)
-	if err != nil {
-		return nil, nil, errors.Wrapf(err, "failed to find service %s/%d in product %s", applyParam.ServiceName, svcFindOption.Revision, productInfo.ProductName)
-	}
+// 	svcTemplate, err := repository.QueryTemplateService(svcFindOption, productInfo.Production)
+// 	if err != nil {
+// 		return nil, nil, errors.Wrapf(err, "failed to find service %s/%d in product %s", applyParam.ServiceName, svcFindOption.Revision, productInfo.ProductName)
+// 	}
 
-	targetChart := productInfo.GetChartRenderMap()[applyParam.ServiceName]
-	if targetChart == nil {
-		targetChart = &template.ServiceRender{
-			ServiceName:  applyParam.ServiceName,
-			ValuesYaml:   svcTemplate.HelmChart.ValuesYaml,
-			ChartVersion: svcTemplate.HelmChart.Version,
-			OverrideYaml: &template.CustomYaml{},
-		}
-		productService.Render = targetChart
-	} else {
-		productService.GetServiceRender().ValuesYaml = svcTemplate.HelmChart.ValuesYaml
-		productService.GetServiceRender().ChartVersion = svcTemplate.HelmChart.Version
-	}
+// 	targetChart := productInfo.GetChartRenderMap()[applyParam.ServiceName]
+// 	if targetChart == nil {
+// 		targetChart = &template.ServiceRender{
+// 			ServiceName:  applyParam.ServiceName,
+// 			ValuesYaml:   svcTemplate.HelmChart.ValuesYaml,
+// 			ChartVersion: svcTemplate.HelmChart.Version,
+// 			OverrideYaml: &template.CustomYaml{},
+// 		}
+// 		productService.Render = targetChart
+// 	} else {
+// 		productService.GetServiceRender().ValuesYaml = svcTemplate.HelmChart.ValuesYaml
+// 		productService.GetServiceRender().ChartVersion = svcTemplate.HelmChart.Version
+// 	}
 
-	if applyParam.UpdateServiceRevision && productService.Revision != svcTemplate.Revision {
-		// reuse the images in the product service if it is not empty
-		imageMap := make(map[string]string)
-		for _, container := range productService.Containers {
-			imageMap[container.ImageName] = container.Image
-		}
-		productService.Containers = svcTemplate.Containers
-		for _, container := range productService.Containers {
-			if image, ok := imageMap[container.ImageName]; ok {
-				container.Image = image
-			}
-		}
+// 	if applyParam.UpdateServiceRevision && productService.Revision != svcTemplate.Revision {
+// 		// reuse the images in the product service if it is not empty
+// 		imageMap := make(map[string]string)
+// 		for _, container := range productService.Containers {
+// 			imageMap[container.ImageName] = container.Image
+// 		}
+// 		productService.Containers = svcTemplate.Containers
+// 		for _, container := range productService.Containers {
+// 			if image, ok := imageMap[container.ImageName]; ok {
+// 				container.Image = image
+// 			}
+// 		}
 
-		imageValuesMaps := make([]map[string]interface{}, 0)
-		for _, targetContainer := range productService.Containers {
-			// prepare image replace info
-			replaceValuesMap, err := commonutil.AssignImageData(targetContainer.Image, commonutil.GetValidMatchData(targetContainer.ImagePath))
-			if err != nil {
-				return nil, nil, fmt.Errorf("failed to pase image uri %s/%s, err %s", productInfo.ProductName, applyParam.ServiceName, err.Error())
-			}
-			imageValuesMaps = append(imageValuesMaps, replaceValuesMap)
-		}
+// 		imageValuesMaps := make([]map[string]interface{}, 0)
+// 		for _, targetContainer := range productService.Containers {
+// 			// prepare image replace info
+// 			replaceValuesMap, err := commonutil.AssignImageData(targetContainer.Image, commonutil.GetValidMatchData(targetContainer.ImagePath))
+// 			if err != nil {
+// 				return nil, nil, fmt.Errorf("failed to pase image uri %s/%s, err %s", productInfo.ProductName, applyParam.ServiceName, err.Error())
+// 			}
+// 			imageValuesMaps = append(imageValuesMaps, replaceValuesMap)
+// 		}
 
-		// replace image into service's values.yaml
-		replacedValuesYaml, err := commonutil.ReplaceImage(svcTemplate.HelmChart.ValuesYaml, imageValuesMaps...)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to replace image uri %s/%s, err %s", productInfo.ProductName, applyParam.ServiceName, err.Error())
+// 		// replace image into service's values.yaml
+// 		replacedValuesYaml, err := commonutil.ReplaceImage(svcTemplate.HelmChart.ValuesYaml, imageValuesMaps...)
+// 		if err != nil {
+// 			return nil, nil, fmt.Errorf("failed to replace image uri %s/%s, err %s", productInfo.ProductName, applyParam.ServiceName, err.Error())
 
-		}
-		if replacedValuesYaml == "" {
-			return nil, nil, fmt.Errorf("failed to set new image uri into service's values.yaml %s/%s", productInfo.ProductName, applyParam.ServiceName)
-		}
-		targetChart.ValuesYaml = replacedValuesYaml
-	}
+// 		}
+// 		if replacedValuesYaml == "" {
+// 			return nil, nil, fmt.Errorf("failed to set new image uri into service's values.yaml %s/%s", productInfo.ProductName, applyParam.ServiceName)
+// 		}
+// 		targetChart.ValuesYaml = replacedValuesYaml
+// 	}
 
-	productService.Revision = svcTemplate.Revision
+// 	productService.Revision = svcTemplate.Revision
 
-	return productService, svcTemplate, nil
-}
+// 	return productService, svcTemplate, nil
+// }
 
 // RemoveHelmResource create or patch helm services
 // if service is not deployed ever, it will be added into target environment

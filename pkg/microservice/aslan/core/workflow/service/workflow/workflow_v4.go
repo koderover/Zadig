@@ -57,9 +57,9 @@ import (
 	templaterepo "github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/repository/mongodb/template"
 	commonservice "github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/service"
 	"github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/service/collaboration"
+	helmservice "github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/service/helm"
 	"github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/service/kube"
 	larkservice "github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/service/lark"
-	"github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/service/repository"
 	commomtemplate "github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/service/template"
 	"github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/service/webhook"
 	"github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/util"
@@ -2370,70 +2370,31 @@ func CompareHelmServiceYamlInEnv(serviceName, variableYaml, envName, projectName
 		currentYaml = resp.ValuesYaml
 	}
 
-	param := &kube.ResourceApplyParam{
-		ProductInfo: prod,
-		ServiceName: serviceName,
-		// no image preview available in this api
-		Images:                images,
-		Uninstall:             false,
-		UpdateServiceRevision: updateServiceRevision,
-		Timeout:               setting.DeployTimeout,
-	}
+	// generate the new yaml content
 
-	curProdSvcRevision := func() int64 {
-		if prod.GetServiceMap()[serviceName] != nil {
-			return prod.GetServiceMap()[serviceName].Revision
-		}
-		return 0
-	}()
-
-	productService, _, err := kube.PrepareHelmServiceData(param)
+	helmDeploySvc := helmservice.NewHelmDeployService()
+	productService, _, err := helmDeploySvc.GenNewEnvService(prod, serviceName, updateServiceRevision)
 	if err != nil {
-		log.Errorf("prepare helm service data error: %v", err)
 		return nil, err
 	}
+	productService.GetServiceRender().SetOverrideYaml(variableYaml)
 
-	if updateServiceRevision && curProdSvcRevision > int64(0) {
-		svcFindOption := &commonrepo.ServiceFindOption{
-			ProductName: prod.ProductName,
-			ServiceName: serviceName,
-		}
-		latestSvc, err := repository.QueryTemplateService(svcFindOption, prod.Production)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to find service %s/%d in product %s", serviceName, svcFindOption.Revision, prod.ProductName)
-		}
-
-		curUsedSvc, err := repository.QueryTemplateService(&commonrepo.ServiceFindOption{
-			ProductName: prod.ProductName,
-			ServiceName: serviceName,
-			Revision:    curProdSvcRevision,
-		}, prod.Production)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to find service %s/%d in product %s", serviceName, svcFindOption.Revision, prod.ProductName)
-		}
-
-		containers := kube.CalculateContainer(productService, curUsedSvc, latestSvc.Containers, prod)
-		images = kube.MergeImages(containers, images)
-		param.Images = images
-	}
-
-	chartInfo := productService.GetServiceRender()
-	param.VariableYaml = variableYaml
-	chartInfo.OverrideYaml.YamlContent = variableYaml
-
-	yamlContent, err := kube.GeneMergedValues(productService, productService.GetServiceRender(), prod.DefaultValues, param.Images, true)
+	yamlContent, err := helmDeploySvc.NewGeneMergedValues(productService, prod.DefaultValues, nil)
 	if err != nil {
-		log.Errorf("failed to generate merged values.yaml, err: %s", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to generate merged values yaml, err: %s", err)
 	}
 
-	tmp := make(map[string]interface{})
-	if err := yaml.Unmarshal([]byte(yamlContent), &tmp); err != nil {
-		log.Errorf("failed to unmarshal latest yaml content, err: %s", err)
-		return nil, err
+	fullValuesYaml, err := helmDeploySvc.GeneFullValues(productService.ValuesYaml, yamlContent)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate full values yaml, err: %s", err)
 	}
 
 	// re-marshal it into string to make sure indentation is right
+	tmp := make(map[string]interface{})
+	if err := yaml.Unmarshal([]byte(fullValuesYaml), &tmp); err != nil {
+		log.Errorf("failed to unmarshal latest yaml content, err: %s", err)
+		return nil, err
+	}
 	latestYamlContent, err := yaml.Marshal(tmp)
 	if err != nil {
 		log.Errorf("failed to marshal latest yaml content, err: %s", err)
@@ -2442,6 +2403,58 @@ func CompareHelmServiceYamlInEnv(serviceName, variableYaml, envName, projectName
 	return &GetHelmValuesDifferenceResp{
 		Current: currentYaml,
 		Latest:  string(latestYamlContent),
+	}, nil
+}
+
+type HelmDeployJobMergeImageResponse struct {
+	Values string `json:"values"`
+}
+
+func HelmDeployJobMergeImage(ctx *internalhandler.Context, projectName, envName, serviceName, valuesYaml string, images []string, isProduction, updateServiceRevision bool) (*HelmDeployJobMergeImageResponse, error) {
+	opt := &commonrepo.ProductFindOptions{Name: projectName, EnvName: envName, Production: &isProduction}
+	prod, err := commonrepo.NewProductColl().Find(opt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find project: %s, err: %s", projectName, err)
+	}
+
+	helmDeploySvc := helmservice.NewHelmDeployService()
+	prodSvc, _, err := helmDeploySvc.GenNewEnvService(prod, serviceName, updateServiceRevision)
+	if err != nil {
+		return nil, err
+	}
+
+	imageMap := make(map[string]string)
+	mergedContainers := []*commonmodels.Container{}
+	for _, image := range images {
+		imageMap[commonutil.ExtractImageName(image)] = image
+	}
+	for _, container := range prodSvc.Containers {
+		overrideImage, ok := imageMap[container.ImageName]
+		if ok {
+			container.Image = overrideImage
+			mergedContainers = append(mergedContainers, container)
+		}
+	}
+
+	imageValuesMaps := make([]map[string]interface{}, 0)
+	for _, targetContainer := range mergedContainers {
+		// prepare image replace info
+		replaceValuesMap, err := commonutil.AssignImageData(targetContainer.Image, commonutil.GetValidMatchData(targetContainer.ImagePath))
+		if err != nil {
+			return nil, fmt.Errorf("failed to pase image uri %s/%s, err %s", projectName, serviceName, err.Error())
+		}
+		imageValuesMaps = append(imageValuesMaps, replaceValuesMap)
+	}
+
+	// replace image into service's values.yaml
+	mergedValuesYaml, err := commonutil.ReplaceImage(valuesYaml, imageValuesMaps...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to replace image uri %s/%s, err %s", projectName, serviceName, err.Error())
+
+	}
+
+	return &HelmDeployJobMergeImageResponse{
+		Values: mergedValuesYaml,
 	}, nil
 }
 

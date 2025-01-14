@@ -132,6 +132,7 @@ type EnvService struct {
 	ServiceName        string                          `json:"service_name"`
 	ServiceModules     []*commonmodels.Container       `json:"service_modules"`
 	VariableYaml       string                          `json:"variable_yaml"`
+	OverrideKVs        string                          `json:"override_kvs"`
 	VariableKVs        []*commontypes.RenderVariableKV `json:"variable_kvs"`
 	LatestVariableYaml string                          `json:"latest_variable_yaml"`
 	LatestVariableKVs  []*commontypes.RenderVariableKV `json:"latest_variable_kvs"`
@@ -1187,6 +1188,7 @@ func BuildServiceInfoInEnv(productInfo *commonmodels.Product, templateSvcs []*co
 			}
 		} else if deployType == setting.HelmDeployType {
 			svc.VariableYaml = productInfo.GetSvcRender(serviceName).OverrideYaml.YamlContent
+			svc.OverrideKVs = productInfo.GetSvcRender(serviceName).OverrideValues
 		}
 
 		ret.Services = append(ret.Services, svc)

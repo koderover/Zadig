@@ -542,7 +542,6 @@ func UpdateWebhookForWorkflowV4(c *gin.Context) {
 	defer func() { internalhandler.JSONResponse(c, ctx) }()
 
 	if err != nil {
-
 		ctx.RespErr = fmt.Errorf("authorization Info Generation failed: err %s", err)
 		ctx.UnAuthorized = true
 		return
@@ -1449,4 +1448,51 @@ func getBody(c *gin.Context) string {
 		return ""
 	}
 	return string(b)
+}
+
+type HelmDeployJobMergeImageRequest struct {
+	ServiceName           string            `json:"service_name"`
+	ValuesYaml            string            `json:"values_yaml"`
+	EnvName               string            `json:"env_name"`
+	IsProduction          bool              `json:"production"`
+	UpdateServiceRevision bool              `json:"update_service_revision"`
+	ServiceModules        []*ModuleAndImage `json:"service_modules"`
+}
+
+// @Summary 工作流Helm部署任务合并镜像到ValuesYaml
+// @Description
+// @Tags 	workflow
+// @Accept 	json
+// @Produce json
+// @Param 	projectName query       string                          true    "项目名称"
+// @Param 	body 		body 		HelmDeployJobMergeImageRequest 	true 	"body"
+// @Success 200  		{object} 	workflow.HelmDeployJobMergeImageResponse
+// @Router /api/aslan/workflow/v4/deploy/mergeImage [post]
+func HelmDeployJobMergeImage(c *gin.Context) {
+	ctx, err := internalhandler.NewContextWithAuthorization(c)
+	defer func() { internalhandler.JSONResponse(c, ctx) }()
+
+	if err != nil {
+		ctx.RespErr = fmt.Errorf("authorization Info Generation failed: err %s", err)
+		ctx.UnAuthorized = true
+		return
+	}
+
+	req := new(HelmDeployJobMergeImageRequest)
+	if err := c.ShouldBindJSON(req); err != nil {
+		ctx.RespErr = e.ErrInvalidParam.AddDesc(err.Error())
+		return
+	}
+
+	projectName := c.Query("projectName")
+	if projectName == "" {
+		ctx.RespErr = e.ErrInvalidParam.AddDesc("projectName is required")
+		return
+	}
+
+	images := make([]string, 0)
+	for _, imageInfos := range req.ServiceModules {
+		images = append(images, imageInfos.Image)
+	}
+	ctx.Resp, ctx.RespErr = workflow.HelmDeployJobMergeImage(ctx, projectName, req.EnvName, req.ServiceName, req.ValuesYaml, images, req.IsProduction, req.UpdateServiceRevision)
 }

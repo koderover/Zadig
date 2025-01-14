@@ -166,9 +166,12 @@ func (c *EnvVersionColl) ListServiceVersions(productName, envName, serviceName s
 		query["service.service_name"] = serviceName
 	}
 
+	opts := options.Find()
+	opts.SetSort(bson.D{{"revision", 1}})
+
 	ctx := context.Background()
 
-	cursor, err := c.Collection.Find(ctx, query)
+	cursor, err := c.Collection.Find(ctx, query, opts)
 	if err != nil {
 		return nil, err
 	}

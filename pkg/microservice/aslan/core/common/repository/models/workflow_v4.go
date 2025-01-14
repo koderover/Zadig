@@ -441,9 +441,12 @@ type DeployServiceInfo struct {
 	VariableConfigs []*DeployVariableConfig         `bson:"variable_configs"                 yaml:"variable_configs,omitempty"          json:"variable_configs,omitempty"`
 	VariableKVs     []*commontypes.RenderVariableKV `bson:"variable_kvs"                     yaml:"variable_kvs"                        json:"variable_kvs"`
 	//LatestVariableKVs []*commontypes.RenderVariableKV `bson:"latest_variable_kvs"              yaml:"latest_variable_kvs"                 json:"latest_variable_kvs"`
+	// helm 和 k8s 部署均使用该字段作为yaml格式的变量
 	VariableYaml string              `bson:"variable_yaml"                    yaml:"variable_yaml"                       json:"variable_yaml"`
+	OverrideKVs  string              `bson:"override_kvs"                     yaml:"override_kvs"              json:"override_kvs"` // used for helm services, json-encoded string of kv value
 	UpdateConfig bool                `bson:"update_config"                    yaml:"update_config"                       json:"update_config"`
 	Updatable    bool                `bson:"-"                        yaml:"updatable"                           json:"updatable"`
+	AutoSync     bool                `bson:"-"                        yaml:"auto_sync"                           json:"auto_sync"`
 	Deployed     bool                `bson:"-"                                yaml:"deployed"                            json:"deployed"`
 	Modules      []*DeployModuleInfo `bson:"modules"                          yaml:"modules"                             json:"modules"`
 	// Deprecated since 1.18

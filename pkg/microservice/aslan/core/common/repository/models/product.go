@@ -179,6 +179,7 @@ type ProductService struct {
 	RenderedYaml   string                          `bson:"rendered_yaml,omitempty"    json:"rendered_yaml,omitempty"`
 	VariableYaml   string                          `bson:"-"                          json:"variable_yaml,omitempty"`
 	VariableKVs    []*commontypes.RenderVariableKV `bson:"-"                          json:"variable_kvs,omitempty"`
+	ValuesYaml     string                          `bson:"-"                          json:"values_yaml,omitempty"`
 	Updatable      bool                            `bson:"-"                          json:"updatable"`
 	DeployStrategy string                          `bson:"-"                          json:"deploy_strategy"`
 }

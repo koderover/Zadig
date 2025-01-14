@@ -83,7 +83,7 @@ func syncYamlFromVariableSet(yamlData *templatemodels.CustomYaml, curValue strin
 	return true, variableSet.VariableYaml, nil
 }
 
-func syncYamlFromGit(yamlData *templatemodels.CustomYaml, curValue string) (bool, string, error) {
+func syncYamlFromGit(yamlData *templatemodels.CustomYaml, curValue string, originValue string) (bool, string, error) {
 	if !fromGitRepo(yamlData.Source) {
 		return false, "", nil
 	}
@@ -108,7 +108,7 @@ func syncYamlFromGit(yamlData *templatemodels.CustomYaml, curValue string) (bool
 	if err != nil {
 		return false, "", err
 	}
-	equal, err := yamlutil.Equal(string(valuesYAML), curValue)
+	equal, err := yamlutil.Equal(string(valuesYAML), originValue)
 	if err != nil || equal {
 		return false, "", err
 	}
@@ -117,14 +117,14 @@ func syncYamlFromGit(yamlData *templatemodels.CustomYaml, curValue string) (bool
 
 // SyncYamlFromSource sync values.yaml from source
 // NOTE for git source currently only support gitHub and gitlab
-func SyncYamlFromSource(yamlData *templatemodels.CustomYaml, curValue string) (bool, string, error) {
+func SyncYamlFromSource(yamlData *templatemodels.CustomYaml, curValue string, originValue string) (bool, string, error) {
 	if yamlData == nil || !yamlData.AutoSync {
 		return false, "", nil
 	}
 	if yamlData.Source == setting.SourceFromVariableSet {
 		return syncYamlFromVariableSet(yamlData, curValue)
 	}
-	return syncYamlFromGit(yamlData, curValue)
+	return syncYamlFromGit(yamlData, curValue, originValue)
 }
 
 func GetDefaultValues(productName, envName string, production bool, log *zap.SugaredLogger) (*DefaultValuesResp, error) {

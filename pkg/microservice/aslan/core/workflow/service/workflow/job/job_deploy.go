@@ -292,8 +292,10 @@ func (j *DeployJob) SetPreset() error {
 					VariableKVs:     svc.VariableKVs,
 					// LatestVariableKVs: svc.LatestVariableKVs,
 					VariableYaml:  svc.VariableYaml,
+					OverrideKVs:   svc.OverrideKVs,
 					UpdateConfig:  svc.UpdateConfig,
 					Updatable:     svc.Updatable,
+					AutoSync:      svc.AutoSync,
 					Deployed:      svc.Deployed,
 					Modules:       selectedModules,
 					KeyVals:       svc.KeyVals,
@@ -528,6 +530,7 @@ func (j *DeployJob) UpdateWithLatestSetting() error {
 			//	}
 			//}
 
+			// @todo 处理合并helm变量，需要合并values和kvs
 			mergedValues, err := helmtool.MergeOverrideValues("", service.VariableYaml, userSvc.VariableYaml, "", make([]*helmtool.KV, 0))
 			if err != nil {
 				return fmt.Errorf("failed to merge helm values, error: %s", err)
@@ -552,6 +555,7 @@ func (j *DeployJob) UpdateWithLatestSetting() error {
 				//LatestVariableKVs: service.LatestVariableKVs,
 				VariableYaml:  mergedValues,
 				UpdateConfig:  userSvc.UpdateConfig,
+				AutoSync:      service.AutoSync,
 				Updatable:     service.Updatable,
 				Deployed:      service.Deployed,
 				Modules:       mergedModules,
@@ -709,8 +713,10 @@ func generateEnvDeployServiceInfo(env, project string, spec *commonmodels.ZadigD
 			// VariableKVs: kvs,
 			// LatestVariableKVs: svcInfo.LatestVariableKVs,
 			VariableYaml: service.GetServiceRender().OverrideYaml.YamlContent,
+			OverrideKVs:  service.GetServiceRender().OverrideValues,
 			UpdateConfig: updateConfig,
 			Updatable:    svcInfo.Updatable,
+			AutoSync:     service.GetServiceRender().GetAutoSync(),
 			Deployed:     true,
 			Modules:      modules,
 		}
@@ -1029,6 +1035,7 @@ func (j *DeployJob) ToJobs(taskID int64) ([]*commonmodels.JobTask, error) {
 
 			jobTaskSpec := &commonmodels.JobTaskHelmDeploySpec{
 				Env:                envName,
+				Source:             j.spec.Source,
 				ServiceName:        svc.ServiceName,
 				DeployContents:     j.spec.DeployContents,
 				SkipCheckRunStatus: j.spec.SkipCheckRunStatus,

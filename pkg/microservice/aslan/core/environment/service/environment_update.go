@@ -54,7 +54,7 @@ func InstallService(helmClient *helmtool.HelmClient, param *kube.ReleaseInstallP
 		}
 		return nil
 	}
-	errList := batchExecutorWithRetry(3, time.Millisecond*2500, []*kube.ReleaseInstallParam{param}, handler, log.SugaredLogger())
+	errList := kube.BatchExecutorWithRetry(3, time.Millisecond*2500, []*kube.ReleaseInstallParam{param}, handler, log.SugaredLogger())
 	if len(errList) > 0 {
 		return errList[0]
 	}
@@ -153,7 +153,7 @@ func reInstallHelmServiceInEnv(productInfo *commonmodels.Product, templateSvc *c
 		return
 	}
 
-	param, errBuildParam := buildInstallParam(productInfo.DefaultValues, productInfo, renderChart, productSvc)
+	param, errBuildParam := kube.BuildInstallParam(productInfo.DefaultValues, productInfo, renderChart, productSvc)
 	if errBuildParam != nil {
 		err = fmt.Errorf("failed to generate install param, service: %s, namespace: %s, err: %s", templateSvc.ServiceName, productInfo.Namespace, errBuildParam)
 		return

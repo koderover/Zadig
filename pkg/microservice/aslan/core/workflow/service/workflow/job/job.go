@@ -63,6 +63,7 @@ type JobCtl interface {
 	MergeArgs(args *commonmodels.Job) error
 	// UpdateWithLatestSetting update the current workflow arguments with the latest workflow settings.
 	// it will also calculate if the user's args is still valid, returning error if it is invalid.
+	// Used in release plan and workflow trigger
 	UpdateWithLatestSetting() error
 	LintJob() error
 }
