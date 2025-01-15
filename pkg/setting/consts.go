@@ -975,3 +975,7 @@ const (
 	SAEZadigServiceTagKey       = "ZADIG_SERVICE"
 	SAEZadigServiceModuleTagKey = "ZADIG_SERVICE_MODULE"
 )
+
+const (
+	EventBusChannelClusterUpdate = "cluster_update"
+)

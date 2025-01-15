@@ -36,8 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 
-	config2 "github.com/koderover/zadig/v2/pkg/config"
-	pkgconfig "github.com/koderover/zadig/v2/pkg/config"
+	configbase "github.com/koderover/zadig/v2/pkg/config"
 	"github.com/koderover/zadig/v2/pkg/microservice/aslan/config"
 	"github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/repository/models"
 	commonmodels "github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/repository/models"
@@ -48,6 +47,7 @@ import (
 	"github.com/koderover/zadig/v2/pkg/tool/clientmanager"
 	"github.com/koderover/zadig/v2/pkg/tool/crypto"
 	e "github.com/koderover/zadig/v2/pkg/tool/errors"
+	redisEventBus "github.com/koderover/zadig/v2/pkg/tool/eventbus/redis"
 	"github.com/koderover/zadig/v2/pkg/tool/kube/multicluster"
 	"github.com/koderover/zadig/v2/pkg/tool/log"
 	"github.com/koderover/zadig/v2/pkg/types"
@@ -171,10 +171,12 @@ func (s *Service) UpdateCluster(id string, cluster *models.K8SCluster, logger *z
 		return nil, e.ErrUpdateCluster.AddDesc(e.DuplicateClusterNameFound)
 	}
 
-	err := clientmanager.NewKubeClientManager().Clear(id)
+	eb := redisEventBus.New(configbase.RedisCommonCacheTokenDB())
+
+	err := eb.Publish(setting.EventBusChannelClusterUpdate, id)
 	if err != nil {
-		log.Errorf("failed to clear old cache, error: %s", err)
-		return nil, e.ErrUpdateCluster.AddDesc(fmt.Sprintf("failed to clear old cache, error: %s", err))
+		logger.Errorf("failed to update cluster by id: %s, failed to publish deletion info to eventbus, error: %s", id, err)
+		return nil, fmt.Errorf("failed to update cluster by id: %s, failed to publish deletion info to eventbus, error: %s", id, err)
 	}
 
 	err = s.coll.UpdateMutableFields(cluster, id)
@@ -192,9 +194,12 @@ func (s *Service) UpdateCluster(id string, cluster *models.K8SCluster, logger *z
 }
 
 func (s *Service) DeleteCluster(user string, id string, logger *zap.SugaredLogger) error {
-	err := clientmanager.NewKubeClientManager().Clear(id)
+	eb := redisEventBus.New(configbase.RedisCommonCacheTokenDB())
+
+	err := eb.Publish(setting.EventBusChannelClusterUpdate, id)
 	if err != nil {
-		log.Errorf("failed to clear old cache, error: %s", err)
+		logger.Errorf("failed to delete cluster by id: %s, failed to publish deletion info to eventbus, error: %s", id, err)
+		return fmt.Errorf("failed to delete cluster by id: %s, failed to publish deletion info to eventbus, error: %s", id, err)
 	}
 
 	err = s.coll.Delete(id)
@@ -329,7 +334,7 @@ func (s *Service) GetYaml(id, agentImage, aslanURL, hubURI string, useDeployment
 			HubAgentImage:        agentImage,
 			ClientToken:          token,
 			HubServerBaseAddr:    hubBase.String(),
-			AslanBaseAddr:        config2.SystemAddress(),
+			AslanBaseAddr:        configbase.SystemAddress(),
 			UseDeployment:        useDeployment,
 			DindReplicas:         dindReplicas,
 			DindLimitsCPU:        dindLimitsCPU,
@@ -341,14 +346,14 @@ func (s *Service) GetYaml(id, agentImage, aslanURL, hubURI string, useDeployment
 			ScheduleWorkflow:     scheduleWorkflow,
 			EnableIRSA:           cluster.AdvancedConfig.EnableIRSA,
 			IRSARoleARN:          cluster.AdvancedConfig.IRSARoleARM,
-			ImagePullPolicy:      config2.ImagePullPolicy(),
+			ImagePullPolicy:      configbase.ImagePullPolicy(),
 		})
 	} else {
 		err = YamlTemplateForNamespace.Execute(buffer, TemplateSchema{
 			HubAgentImage:        agentImage,
 			ClientToken:          token,
 			HubServerBaseAddr:    hubBase.String(),
-			AslanBaseAddr:        config2.SystemAddress(),
+			AslanBaseAddr:        configbase.SystemAddress(),
 			UseDeployment:        useDeployment,
 			Namespace:            cluster.Namespace,
 			DindReplicas:         dindReplicas,
@@ -360,7 +365,7 @@ func (s *Service) GetYaml(id, agentImage, aslanURL, hubURI string, useDeployment
 			DindStorageSizeInGiB: dindStorageSizeInGiB,
 			EnableIRSA:           cluster.AdvancedConfig.EnableIRSA,
 			IRSARoleARN:          cluster.AdvancedConfig.IRSARoleARM,
-			ImagePullPolicy:      config2.ImagePullPolicy(),
+			ImagePullPolicy:      configbase.ImagePullPolicy(),
 		})
 	}
 
@@ -462,7 +467,7 @@ func InitializeExternalCluster(clusterID string) error {
 		},
 	}
 
-	cluster, err := aslanClient.New(pkgconfig.AslanServiceAddress()).GetClusterInfo(clusterID)
+	cluster, err := aslanClient.New(configbase.AslanServiceAddress()).GetClusterInfo(clusterID)
 	if err != nil {
 		return err
 	}
@@ -602,6 +607,13 @@ func InitializeExternalCluster(clusterID string) error {
 	}
 
 	return nil
+}
+
+func UpdateClusterHandler(message string) {
+	err := clientmanager.NewKubeClientManager().Clear(message)
+	if err != nil {
+		log.Errorf("failed to clear old cache for clusterID: %s, error: %s", message, err)
+	}
 }
 
 func ValidateClusterRoleYAML(k8sYaml string, logger *zap.SugaredLogger) error {

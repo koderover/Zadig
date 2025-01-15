@@ -26,7 +26,6 @@ import (
 	newgoCron "github.com/go-co-op/gocron/v2"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/hashicorp/go-multierror"
-	"github.com/koderover/zadig/v2/pkg/tool/clientmanager"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -50,6 +49,8 @@ import (
 	"github.com/koderover/zadig/v2/pkg/microservice/hubserver/core/repository/mongodb"
 	mongodb2 "github.com/koderover/zadig/v2/pkg/microservice/systemconfig/core/codehost/repository/mongodb"
 	"github.com/koderover/zadig/v2/pkg/setting"
+	"github.com/koderover/zadig/v2/pkg/tool/clientmanager"
+	redisEventBus "github.com/koderover/zadig/v2/pkg/tool/eventbus/redis"
 	"github.com/koderover/zadig/v2/pkg/tool/git/gitlab"
 	gormtool "github.com/koderover/zadig/v2/pkg/tool/gorm"
 	"github.com/koderover/zadig/v2/pkg/tool/klock"
@@ -146,6 +147,8 @@ func Start(ctx context.Context) {
 	initRsaKey()
 
 	initCron()
+
+	initEventBusSubscription()
 }
 
 func Stop(ctx context.Context) {
@@ -349,4 +352,11 @@ func initDatabaseConnection() {
 	if err := mongotool.Ping(ctx); err != nil {
 		panic(fmt.Errorf("failed to connect to mongo, error: %s", err))
 	}
+}
+
+func initEventBusSubscription() {
+	eb := redisEventBus.New(configbase.RedisCommonCacheTokenDB())
+
+	eb.RegisterHandleFunc(setting.EventBusChannelClusterUpdate, kube.UpdateClusterHandler)
+	eb.Subscribe(context.Background(), setting.EventBusChannelClusterUpdate)
 }
