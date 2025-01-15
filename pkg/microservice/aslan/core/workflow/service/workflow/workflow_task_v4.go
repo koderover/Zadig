@@ -736,14 +736,14 @@ func GetManualExecWorkflowTaskV4Info(workflowName string, taskID int64, logger *
 	return task.OriginWorkflowArgs, nil
 }
 
-func CloneWorkflowTaskV4(workflowName string, taskID int64, logger *zap.SugaredLogger) (*commonmodels.WorkflowV4, error) {
+func CloneWorkflowTaskV4(workflowName string, taskID int64, isView bool, logger *zap.SugaredLogger) (*commonmodels.WorkflowV4, error) {
 	originalWorkflow, err := commonrepo.NewWorkflowV4Coll().Find(workflowName)
 	if err != nil {
 		logger.Errorf("find workflowV4 error: %s", err)
 		return nil, e.ErrFindWorkflow.AddErr(err)
 	}
 
-	if originalWorkflow.EnableApprovalTicket {
+	if originalWorkflow.EnableApprovalTicket && !isView {
 		return nil, e.ErrCloneTask.AddDesc("无法克隆开启了预审批的工作流")
 	}
 

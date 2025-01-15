@@ -206,6 +206,7 @@ func (*Router) Inject(router *gin.RouterGroup) {
 		taskV4.GET("/workflow/:workflowName/task/:taskID", GetWorkflowTaskV4)
 		taskV4.DELETE("/workflow/:workflowName/task/:taskID", CancelWorkflowTaskV4)
 		taskV4.GET("/clone/workflow/:workflowName/task/:taskID", CloneWorkflowTaskV4)
+		taskV4.GET("/view/workflow/:workflowName/task/:taskID", ViewWorkflowTaskV4)
 		taskV4.POST("/retry/workflow/:workflowName/task/:taskID", RetryWorkflowTaskV4)
 		taskV4.POST("/manualexec/workflow/:workflowName/task/:taskID", ManualExecWorkflowTaskV4)
 		taskV4.GET("/manualexec/workflow/:workflowName/task/:taskID", GetManualExecWorkflowTaskV4Info)
