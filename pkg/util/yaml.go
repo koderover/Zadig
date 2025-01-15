@@ -63,3 +63,22 @@ func JoinYamls(files []string) string {
 func SplitYaml(yaml string) []string {
 	return strings.Split(yaml, setting.YamlFileSeperator)
 }
+
+func ConvertIntsToInt64(data interface{}) interface{} {
+	switch v := data.(type) {
+	case map[string]interface{}:
+		for key, value := range v {
+			v[key] = ConvertIntsToInt64(value)
+		}
+		return v
+	case []interface{}:
+		for i, value := range v {
+			v[i] = ConvertIntsToInt64(value)
+		}
+		return v
+	case int:
+		return int64(v)
+	default:
+		return v
+	}
+}

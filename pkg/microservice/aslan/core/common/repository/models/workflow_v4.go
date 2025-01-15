@@ -458,8 +458,9 @@ type DeployModuleInfo struct {
 }
 
 type DeployVariableConfig struct {
-	VariableKey       string `bson:"variable_key"                     json:"variable_key"                        yaml:"variable_key"`
-	UseGlobalVariable bool   `bson:"use_global_variable"              json:"use_global_variable"                 yaml:"use_global_variable"`
+	VariableKey string `bson:"variable_key"                     json:"variable_key"                        yaml:"variable_key"`
+	Source      string `bson:"source"                           json:"source"                              yaml:"source"`
+	Value       string `bson:"value"                            json:"value"                               yaml:"value"`
 }
 
 type ServiceKeyVal struct {

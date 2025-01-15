@@ -311,6 +311,14 @@ func (j *DeployJob) SetPreset() error {
 		j.spec.Services = svcResp
 	}
 
+	for _, svc := range j.spec.Services {
+		for _, cfg := range svc.VariableConfigs {
+			if cfg.Source == "" {
+				cfg.Source = "runtime"
+			}
+		}
+	}
+
 	j.job.Spec = j.spec
 	return nil
 }
