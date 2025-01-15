@@ -18,8 +18,12 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/koderover/zadig/v2/pkg/tool/clientmanager"
+	"github.com/openkruise/kruise-api/apps/v1alpha1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -1420,6 +1424,17 @@ func GetServiceImpl(serviceName string, serviceTmpl *commonmodels.Service, workL
 
 				ret.Scales = append(ret.Scales, GetDeploymentWorkloadResource(d, inf, log))
 				ret.Workloads = append(ret.Workloads, ToDeploymentWorkload(d))
+			case setting.CloneSet:
+				dc, err := clientmanager.NewKubeClientManager().GetKruiseClient(env.ClusterID)
+				if err != nil {
+					continue
+				}
+				d, err := dc.AppsV1alpha1().CloneSets(namespace).Get(context.Background(), u.GetName(), metav1.GetOptions{})
+				if err != nil {
+					continue
+				}
+				ret.Scales = append(ret.Scales, GetCloneSetWorkloadResource(d, inf, log))
+				ret.Workloads = append(ret.Workloads, ToCloneSetWorkload(d))
 			case setting.StatefulSet:
 				sts, err := getter.GetStatefulSetByNameWWithCache(u.GetName(), namespace, inf)
 				if err != nil {
@@ -1494,6 +1509,15 @@ func GetDeploymentWorkloadResource(d *appsv1.Deployment, informer informers.Shar
 	return wrapper.Deployment(d).WorkloadResource(pods)
 }
 
+func GetCloneSetWorkloadResource(d *v1alpha1.CloneSet, informer informers.SharedInformerFactory, log *zap.SugaredLogger) *internalresource.Workload {
+	pods, err := getter.ListPodsWithCache(labels.SelectorFromValidatedSet(d.Spec.Selector.MatchLabels), informer)
+	if err != nil {
+		log.Warnf("Failed to get pods, err: %s", err)
+	}
+
+	return wrapper.CloneSet(d).WorkloadResource(pods)
+}
+
 func getStatefulSetWorkloadResource(sts *appsv1.StatefulSet, informer informers.SharedInformerFactory, log *zap.SugaredLogger) *internalresource.Workload {
 	pods, err := getter.ListPodsWithCache(labels.SelectorFromValidatedSet(sts.Spec.Selector.MatchLabels), informer)
 	if err != nil {
@@ -1543,6 +1567,20 @@ func ToDeploymentWorkload(v *appsv1.Deployment) *Workload {
 		Images:     wrapper.Deployment(v).ImageInfos(),
 		Containers: wrapper.Deployment(v).GetContainers(),
 		Ready:      wrapper.Deployment(v).Ready(),
+		Annotation: v.Annotations,
+	}
+	return workload
+}
+
+func ToCloneSetWorkload(v *v1alpha1.CloneSet) *Workload {
+	workload := &Workload{
+		Name:       v.Name,
+		Spec:       v.Spec.Template,
+		Selector:   v.Spec.Selector,
+		Type:       setting.CloneSet,
+		Images:     wrapper.CloneSet(v).ImageInfos(),
+		Containers: wrapper.CloneSet(v).GetContainers(),
+		Ready:      wrapper.CloneSet(v).Ready(),
 		Annotation: v.Annotations,
 	}
 	return workload

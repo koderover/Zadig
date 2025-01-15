@@ -71,14 +71,19 @@ func Scale(args *ScaleArgs, logger *zap.SugaredLogger) error {
 
 	switch args.Type {
 	case setting.Deployment:
-		err := updater.ScaleDeployment(namespace, args.Name, args.Number, kubeClient)
+		err = updater.ScaleDeployment(namespace, args.Name, args.Number, kubeClient)
 		if err != nil {
 			logger.Errorf("failed to scale %s/deploy/%s to %d", namespace, args.Name, args.Number)
 		}
 	case setting.StatefulSet:
-		err := updater.ScaleStatefulSet(namespace, args.Name, args.Number, kubeClient)
+		err = updater.ScaleStatefulSet(namespace, args.Name, args.Number, kubeClient)
 		if err != nil {
 			logger.Errorf("failed to scale %s/sts/%s to %d", namespace, args.Name, args.Number)
+		}
+	case setting.CloneSet:
+		err = updater.ScaleCloneSet(namespace, args.Name, args.Number, kubeClient)
+		if err != nil {
+			logger.Errorf("failed to scale %s/cloneset/%s to %d", namespace, args.Name, args.Number)
 		}
 	}
 

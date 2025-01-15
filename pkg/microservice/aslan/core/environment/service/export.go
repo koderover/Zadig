@@ -17,11 +17,16 @@ limitations under the License.
 package service
 
 import (
+	"context"
 	"github.com/koderover/zadig/v2/pkg/tool/clientmanager"
+	"github.com/openkruise/kruise-api/client/clientset/versioned"
 	"go.uber.org/zap"
 	"helm.sh/helm/v3/pkg/releaseutil"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/json"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/yaml"
 
 	commonrepo "github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/repository/mongodb"
 	"github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/service/kube"
@@ -65,6 +70,12 @@ func ExportYaml(envName, productName, serviceName, source string, production boo
 		return res
 	}
 
+	kruise, err := clientmanager.NewKubeClientManager().GetKruiseClient(env.ClusterID)
+	if err != nil {
+		log.Errorf("failed to get kruise for cluster %s", env.ClusterID)
+		return res
+	}
+
 	// needFetchByRenderedManifest happens when service is not deployed by zadig, or is not connected to zadig (when request comes from wd)
 	needFetchByRenderedManifest := false
 
@@ -79,6 +90,8 @@ func ExportYaml(envName, productName, serviceName, source string, production boo
 		yamls = append(yamls, stss...)
 		cronJobs := getCronJobYaml(kubeClient, namespace, selector, VersionLessThan121(clusterVersion), log)
 		yamls = append(yamls, cronJobs...)
+		cloneSets := getKruiseYaml(kruise, namespace, selector, log)
+		yamls = append(yamls, cloneSets...)
 		if len(deploys) == 0 && len(stss) == 0 && len(cronJobs) == 0 {
 			if source == "wd" {
 				needFetchByRenderedManifest = true
@@ -166,6 +179,36 @@ func getDeploymentYaml(kubeClient client.Client, namespace string, selector labe
 		return nil
 	}
 	return resources
+}
+
+func getKruiseYaml(kubeClient versioned.Interface, namespace string, selector labels.Selector, log *zap.SugaredLogger) [][]byte {
+	listOptions := metav1.ListOptions{
+		LabelSelector: selector.String(),
+	}
+
+	resources, err := kubeClient.AppsV1alpha1().CloneSets(namespace).List(context.Background(), listOptions)
+	if err != nil {
+		log.Errorf("List CloneSet error: %v", err)
+		return nil
+	}
+
+	var yamlBytes [][]byte
+	for _, item := range resources.Items {
+		jsonData, err := json.Marshal(item)
+		if err != nil {
+			log.Errorf("Failed to marshal CloneSet %s to JSON: %v", item.Name, err)
+			continue
+		}
+
+		yamlData, err := yaml.JSONToYAML(jsonData)
+		if err != nil {
+			log.Errorf("Failed to convert CloneSet %s JSON to YAML: %v", item.Name, err)
+			continue
+		}
+
+		yamlBytes = append(yamlBytes, yamlData)
+	}
+	return yamlBytes
 }
 
 func getStatefulSetYaml(kubeClient client.Client, namespace string, selector labels.Selector, log *zap.SugaredLogger) [][]byte {

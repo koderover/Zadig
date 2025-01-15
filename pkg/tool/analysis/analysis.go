@@ -22,7 +22,7 @@ import (
 	"strings"
 	"sync"
 
-	openapi_v2 "github.com/google/gnostic/openapiv2"
+	openapi_v2 "github.com/google/gnostic-models/openapiv2"
 	"github.com/koderover/zadig/v2/pkg/tool/cache"
 	"github.com/koderover/zadig/v2/pkg/tool/llm"
 	"github.com/koderover/zadig/v2/pkg/tool/log"
@@ -99,7 +99,6 @@ func (a *Analysis) RunAnalysis(activeFilters []string) {
 	openapiSchema := &openapi_v2.Document{}
 	if a.WithDoc {
 		var openApiErr error
-
 		openapiSchema, openApiErr = a.Client.Client.Discovery().OpenAPISchema()
 		if openApiErr != nil {
 			a.Errors = append(a.Errors, fmt.Sprintf("[KubernetesDoc] %s", openApiErr))

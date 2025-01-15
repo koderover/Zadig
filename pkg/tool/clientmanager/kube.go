@@ -19,6 +19,7 @@ package clientmanager
 import (
 	"context"
 	"fmt"
+	kruise "github.com/openkruise/kruise-api/apps/v1alpha1"
 	"net/http"
 	"net/url"
 	"os"
@@ -45,6 +46,7 @@ import (
 	"github.com/koderover/zadig/v2/pkg/setting"
 	aslanClient "github.com/koderover/zadig/v2/pkg/shared/client/aslan"
 	kubeclient "github.com/koderover/zadig/v2/pkg/shared/kube/client"
+	kruiseclientset "github.com/openkruise/kruise-api/client/clientset/versioned"
 )
 
 var kubeClientManagerInstance *KubeClientManager
@@ -57,6 +59,7 @@ var stopContext = ctrl.SetupSignalHandler()
 type KubeClientManager struct {
 	controllerRuntimeClusterMap sync.Map
 	kubernetesClientSetMap      sync.Map
+	kruiseClientMap             sync.Map
 	metricsClientMap            sync.Map
 	istioClientSetMap           sync.Map
 
@@ -145,6 +148,59 @@ func (cm *KubeClientManager) GetKubernetesClientSet(clusterID string) (*kubernet
 	cli, err := kubernetes.NewForConfig(cfg)
 	if err == nil {
 		cm.kubernetesClientSetMap.Store(clusterID, cli)
+	}
+
+	return cli, err
+}
+
+func (cm *KubeClientManager) GetKruiseClient(clusterID string) (kruiseclientset.Interface, error) {
+	clusterID = handleClusterID(clusterID)
+
+	client, ok := cm.kruiseClientMap.Load(clusterID)
+	if ok {
+		return client.(*kruiseclientset.Clientset), nil
+	}
+
+	if clusterID == setting.LocalClusterID {
+		cfg, err := rest.InClusterConfig()
+		if err != nil {
+			return nil, err
+		}
+		cli, err := kruiseclientset.NewForConfig(cfg)
+		if err == nil {
+			cm.kruiseClientMap.Store(clusterID, cli)
+		}
+		return cli, err
+	}
+
+	clusterInfo, err := aslanClient.New(config.AslanServiceAddress()).GetClusterInfo(clusterID)
+	if err != nil {
+		return nil, err
+	}
+	if clusterInfo == nil {
+		return nil, fmt.Errorf("cluster %s not found", clusterID)
+	}
+
+	if clusterInfo.Status != setting.Normal {
+		return nil, fmt.Errorf("unable to connect to cluster: %s, status: %s", clusterInfo.Name, clusterInfo.Status)
+	}
+
+	var cfg *rest.Config
+	switch clusterInfo.Type {
+	case setting.AgentClusterType, "":
+		cfg = generateAgentRestConfig(clusterID, config.HubServerServiceAddress())
+	case setting.KubeConfigClusterType:
+		cfg, err = generateRestConfigFromKubeConfig(clusterInfo.KubeConfig)
+		if err != nil {
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("failed to create kruise client: unknown cluster type: %s", clusterInfo.Type)
+	}
+
+	cli, err := kruiseclientset.NewForConfig(cfg)
+	if err == nil {
+		cm.kruiseClientMap.Store(clusterID, cli)
 	}
 
 	return cli, err
@@ -414,6 +470,7 @@ func (cm *KubeClientManager) Clear(clusterID string) error {
 
 	cm.controllerRuntimeClusterMap.Delete(clusterID)
 	cm.kubernetesClientSetMap.Delete(clusterID)
+	cm.kruiseClientMap.Delete(clusterID)
 	cm.metricsClientMap.Delete(clusterID)
 	cm.istioClientSetMap.Delete(clusterID)
 
@@ -543,6 +600,7 @@ func createControllerRuntimeCluster(restConfig *rest.Config) (controllerRuntimeC
 	// add all known types
 	// if you want to support custom types, call _ = yourCustomAPIGroup.AddToScheme(scheme)
 	_ = clientgoscheme.AddToScheme(scheme)
+	_ = kruise.AddToScheme(scheme)
 
 	c, err := controllerRuntimeCluster.New(restConfig, func(clusterOptions *controllerRuntimeCluster.Options) {
 		clusterOptions.Scheme = scheme
