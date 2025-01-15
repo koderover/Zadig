@@ -529,6 +529,17 @@ func updateworkflowStatus(workflow *commonmodels.WorkflowTask) {
 }
 
 func (c *workflowCtl) updateWorkflowTask() {
+	c.workflowTaskMutex.Lock()
+	commonrepo.NewUpdateWorkflowTaskLogColl().Create(&commonrepo.UpdateWorkflowTaskLog{
+		WorkflowName: c.workflowTask.WorkflowName,
+		TaskID:       c.workflowTask.TaskID,
+		StartTime:    c.workflowTask.StartTime,
+		EndTime:      c.workflowTask.EndTime,
+		Status:       string(c.workflowTask.Status),
+		Data:         c.workflowTask,
+	})
+	c.workflowTaskMutex.Unlock()
+
 	taskInColl, err := commonrepo.NewworkflowTaskv4Coll().Find(c.workflowTask.WorkflowName, c.workflowTask.TaskID)
 	if err != nil {
 		c.logger.Errorf("find workflow task v4 %s failed,error: %v", c.workflowTask.WorkflowName, err)

@@ -894,18 +894,16 @@ func isPodFailed(podName, namespace string, apiReader client.Reader, xl *zap.Sug
 
 func waitJobEndByCheckingConfigMap(ctx context.Context, taskTimeout <-chan time.Time, namespace, jobName string, checkFile bool, informer informers.SharedInformerFactory, jobTask *commonmodels.JobTask, ack func(), xl *zap.SugaredLogger) (status config.Status, errMsg string) {
 	xl.Infof("wait job to end: %s %s", namespace, jobName)
-	podLister := informer.Core().V1().Pods().Lister().Pods(namespace)
-	jobLister := informer.Batch().V1().Jobs().Lister().Jobs(namespace)
-	cmLister := informer.Core().V1().ConfigMaps().Lister().ConfigMaps(namespace)
 	for {
 		select {
 		case <-ctx.Done():
 			return config.StatusCancelled, ""
-
 		case <-taskTimeout:
 			return config.StatusTimeout, ""
-
 		default:
+			jobLister := informer.Batch().V1().Jobs().Lister().Jobs(namespace)
+			cmLister := informer.Core().V1().ConfigMaps().Lister().ConfigMaps(namespace)
+
 			job, err := jobLister.Get(jobName)
 			if err != nil {
 				errMsg := fmt.Sprintf("failed to get job pod job-name=%s %v", jobName, err)
@@ -922,6 +920,7 @@ func waitJobEndByCheckingConfigMap(ctx context.Context, taskTimeout <-chan time.
 			// pod is still running
 			switch {
 			case job.Status.Active != 0:
+				podLister := informer.Core().V1().Pods().Lister().Pods(namespace)
 				pods, err := podLister.List(labels.Set{"job-name": jobName}.AsSelector())
 				if err != nil {
 					errMsg := fmt.Sprintf("failed to find pod with label job-name=%s %v", jobName, err)
@@ -929,6 +928,15 @@ func waitJobEndByCheckingConfigMap(ctx context.Context, taskTimeout <-chan time.
 					return config.StatusFailed, errMsg
 				}
 				for _, pod := range pods {
+					commonrepo.NewWaitPodFinishLogColl().Create(
+						&commonrepo.WaitPodFinishLog{
+							Namespace: namespace,
+							PodName:   pod.Name,
+							JobName:   jobName,
+							JobStatus: job.Status.String(),
+							Status:    string(pod.Status.Phase),
+						})
+
 					ipod := wrapper.Pod(pod)
 					if ipod.Pending() {
 						continue
