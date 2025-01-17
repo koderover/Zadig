@@ -378,6 +378,20 @@ func OpenAPIGetBuildModule(name, serviceName, serviceModule, projectName string,
 					}
 					resp.Repos = append(resp.Repos, repo)
 				}
+
+				for _, kv := range svcBuild.Envs {
+					newKV := &commonmodels.ServiceKeyVal{
+						Key:          kv.Key,
+						Value:        kv.Value,
+						Type:         kv.Type,
+						ChoiceOption: kv.ChoiceOption,
+						ChoiceValue:  kv.ChoiceValue,
+						IsCredential: kv.IsCredential,
+					}
+
+					resp.Parameters = append(resp.Parameters, newKV)
+				}
+
 				break
 			}
 		}
@@ -428,15 +442,18 @@ func OpenAPIGetBuildModule(name, serviceName, serviceModule, projectName string,
 		CacheDir: build.CacheUserDir,
 	}
 
-	resp.Parameters = make([]*commonmodels.ServiceKeyVal, 0)
-	for _, kv := range build.PreBuild.Envs {
-		resp.Parameters = append(resp.Parameters, &commonmodels.ServiceKeyVal{
-			Key:          kv.Key,
-			Value:        kv.Value,
-			Type:         kv.Type,
-			IsCredential: kv.IsCredential,
-		})
+	if len(resp.Parameters) == 0 {
+		resp.Parameters = make([]*commonmodels.ServiceKeyVal, 0)
+		for _, kv := range build.PreBuild.Envs {
+			resp.Parameters = append(resp.Parameters, &commonmodels.ServiceKeyVal{
+				Key:          kv.Key,
+				Value:        kv.Value,
+				Type:         kv.Type,
+				IsCredential: kv.IsCredential,
+			})
+		}
 	}
+
 	resp.Outputs = build.Outputs
 
 	resp.PostBuild = build.PostBuild
