@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"reflect"
 	"regexp"
 	"strings"
 	"time"
@@ -1135,6 +1136,12 @@ func UpgradeDind(kclient client.Client, cluster *commonmodels.K8SCluster, ns str
 		scaleupd = true
 	}
 
+	originalSts := new(appsv1.StatefulSet)
+	err = util.DeepCopy(originalSts, dindSts)
+	if err != nil {
+		return fmt.Errorf("failed to deep copy original dind statefulset, error: %s", err)
+	}
+
 	dindSts.Spec.Replicas = util.GetInt32Pointer(int32(cluster.DindCfg.Replicas))
 
 	if cluster.DindCfg.Resources != nil && cluster.DindCfg.Resources.Limits != nil {
@@ -1255,11 +1262,29 @@ func UpgradeDind(kclient client.Client, cluster *commonmodels.K8SCluster, ns str
 		dindSts.Spec.Template.Spec.Affinity = commonutil.AddNodeAffinity(cluster.AdvancedConfig, cluster.DindCfg.StrategyID)
 	}
 
-	err = kclient.Update(ctx, dindSts)
-	if err != nil {
-		err = fmt.Errorf("failed to update StatefulSet `dind`: %s", err)
-		log.Error(err)
-		return err
+	if stsHasImmutableFieldChanged(originalSts, dindSts) {
+		err = kclient.Delete(ctx, dindSts)
+		if err != nil {
+			err = fmt.Errorf("failed to delete StatefulSet `dind`: %s", err)
+			log.Error(err)
+			return err
+		}
+
+		dindSts.ResourceVersion = ""
+
+		err = kclient.Create(ctx, dindSts)
+		if err != nil {
+			err = fmt.Errorf("failed to recreate StatefulSet `dind`: %s", err)
+			log.Error(err)
+			return err
+		}
+	} else {
+		err = kclient.Update(ctx, dindSts)
+		if err != nil {
+			err = fmt.Errorf("failed to update StatefulSet `dind`: %s", err)
+			log.Error(err)
+			return err
+		}
 	}
 
 	if scaleupd {
@@ -1555,6 +1580,11 @@ func GetClusterIRSAInfo(clusterID string, logger *zap.SugaredLogger) (*GetCluste
 	}
 
 	return resp, nil
+}
+
+func stsHasImmutableFieldChanged(existing, desired *appsv1.StatefulSet) bool {
+	// Example check for `volumeClaimTemplates`
+	return !reflect.DeepEqual(existing.Spec.VolumeClaimTemplates, desired.Spec.VolumeClaimTemplates) || !reflect.DeepEqual(existing.Spec.ServiceName, desired.Spec.ServiceName) || !reflect.DeepEqual(existing.Spec.Selector, desired.Spec.Selector)
 }
 
 func K8SClusterArgsToModel(args *K8SCluster) (*commonmodels.K8SCluster, error) {
