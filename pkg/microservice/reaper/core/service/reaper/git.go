@@ -224,7 +224,7 @@ func (r *Reaper) buildGitCommands(repo *meta.Repo, hostNames sets.String) []*c.C
 			host := getHost(repo.Address)
 			if !hostNames.Has(host) {
 				if err := writeSSHFile(repo.SSHKey, host); err != nil {
-					log.Errorf("failed to write ssh file %s: %s", repo.SSHKey, err)
+					log.Errorf("failed to write ssh file, err: %s", err)
 				}
 				hostNames.Insert(host)
 			}

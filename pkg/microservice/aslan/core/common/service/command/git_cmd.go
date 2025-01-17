@@ -139,7 +139,7 @@ func RunGitCmds(codehostDetail *systemconfig.CodeHost, repoOwner, repoNamespace,
 		outScanner := bufio.NewScanner(cmdOutReader)
 		go func() {
 			for outScanner.Scan() {
-				fmt.Printf("%s\n",util.MaskSecret(tokens, outScanner.Text()))
+				fmt.Printf("%s\n", util.MaskSecret(tokens, outScanner.Text()))
 			}
 		}()
 
@@ -151,7 +151,7 @@ func RunGitCmds(codehostDetail *systemconfig.CodeHost, repoOwner, repoNamespace,
 		errScanner := bufio.NewScanner(cmdErrReader)
 		go func() {
 			for errScanner.Scan() {
-				fmt.Printf("%s\n",util.MaskSecret(tokens, errScanner.Text()))
+				fmt.Printf("%s\n", util.MaskSecret(tokens, errScanner.Text()))
 			}
 		}()
 
@@ -238,7 +238,7 @@ func buildGitCommands(repo *Repo, hostNames sets.String) []*Command {
 			host := getHost(repo.Address)
 			if !hostNames.Has(host) {
 				if err := writeSSHFile(repo.SSHKey, host); err != nil {
-					log.Errorf("failed to write ssh file %s: %s", repo.SSHKey, err)
+					log.Errorf("failed to write ssh file, err: %v", err)
 				}
 				hostNames.Insert(host)
 			}

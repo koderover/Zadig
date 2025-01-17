@@ -212,7 +212,7 @@ func (s *GitStep) buildGitCommands(repo *types.Repository, hostNames sets.String
 			host := getHost(repo.Address)
 			if !hostNames.Has(host) {
 				if err := writeSSHFile(repo.SSHKey, host); err != nil {
-					s.Logger.Errorf("failed to write ssh file %s: %s", repo.SSHKey, err)
+					s.Logger.Errorf("failed to write ssh file, err: %v", err)
 				}
 				hostNames.Insert(host)
 			}

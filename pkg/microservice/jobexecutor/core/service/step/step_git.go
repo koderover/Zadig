@@ -39,8 +39,8 @@ import (
 	gittool "github.com/koderover/zadig/v2/pkg/tool/git"
 	"github.com/koderover/zadig/v2/pkg/tool/log"
 	"github.com/koderover/zadig/v2/pkg/types"
-	"github.com/koderover/zadig/v2/pkg/util"
 	"github.com/koderover/zadig/v2/pkg/types/step"
+	"github.com/koderover/zadig/v2/pkg/util"
 )
 
 type GitStep struct {
@@ -160,7 +160,7 @@ func (s *GitStep) runGitCmds() error {
 		outScanner := bufio.NewScanner(cmdOutReader)
 		go func() {
 			for outScanner.Scan() {
-				fmt.Printf("%s   %s\n", time.Now().Format(setting.WorkflowTimeFormat),util.MaskSecret(tokens, outScanner.Text()))
+				fmt.Printf("%s   %s\n", time.Now().Format(setting.WorkflowTimeFormat), util.MaskSecret(tokens, outScanner.Text()))
 			}
 		}()
 
@@ -172,7 +172,7 @@ func (s *GitStep) runGitCmds() error {
 		errScanner := bufio.NewScanner(cmdErrReader)
 		go func() {
 			for errScanner.Scan() {
-				fmt.Printf("%s   %s\n", time.Now().Format(setting.WorkflowTimeFormat),util.MaskSecret(tokens, errScanner.Text()))
+				fmt.Printf("%s   %s\n", time.Now().Format(setting.WorkflowTimeFormat), util.MaskSecret(tokens, errScanner.Text()))
 			}
 		}()
 
@@ -263,7 +263,7 @@ func (s *GitStep) buildGitCommands(repo *types.Repository, hostNames sets.String
 			host := getHost(repo.Address)
 			if !hostNames.Has(host) {
 				if err := writeSSHFile(repo.SSHKey, host); err != nil {
-					log.Errorf("failed to write ssh file %s: %s", repo.SSHKey, err)
+					log.Errorf("failed to write ssh file, err: %v", err)
 				}
 				hostNames.Insert(host)
 			}
