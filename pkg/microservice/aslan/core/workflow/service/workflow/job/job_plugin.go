@@ -56,6 +56,10 @@ func (j *PluginJob) SetOptions() error {
 	return nil
 }
 
+func (j *PluginJob) ClearOptions() error {
+	return nil
+}
+
 func (j *PluginJob) ClearSelectionField() error {
 	return nil
 }

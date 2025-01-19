@@ -55,6 +55,10 @@ func (j *MseGrayOfflineJob) SetOptions() error {
 	return nil
 }
 
+func (j *MseGrayOfflineJob) ClearOptions() error {
+	return nil
+}
+
 func (j *MseGrayOfflineJob) ClearSelectionField() error {
 	return nil
 }

@@ -54,6 +54,10 @@ func (j *GuanceyunCheckJob) SetOptions() error {
 	return nil
 }
 
+func (j *GuanceyunCheckJob) ClearOptions() error {
+	return nil
+}
+
 func (j *GuanceyunCheckJob) ClearSelectionField() error {
 	return nil
 }

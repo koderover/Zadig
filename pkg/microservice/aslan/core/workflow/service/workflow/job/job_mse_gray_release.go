@@ -66,6 +66,10 @@ func (j *MseGrayReleaseJob) SetOptions() error {
 	return nil
 }
 
+func (j *MseGrayReleaseJob) ClearOptions() error {
+	return nil
+}
+
 func (j *MseGrayReleaseJob) ClearSelectionField() error {
 	return nil
 }

@@ -399,6 +399,16 @@ func CreateWorkflowTaskV4(args *CreateWorkflowTaskV4Args, workflow *commonmodels
 		workflowTask.TaskCreatorPhone = userInfo.Phone
 	}
 
+	for _, stage := range workflow.Stages {
+		for _, job := range stage.Jobs {
+			err := jobctl.ClearOptions(job, workflow)
+			if err != nil {
+				log.Errorf("failed to remove the job options in the workflow parameters for job %s, stage: %s, error: %s", job.Name, stage.Name, err)
+				return resp, fmt.Errorf("failed to remove the job options in the workflow parameters for job %s, stage: %s, error: %s", job.Name, stage.Name, err)
+			}
+		}
+	}
+
 	// save workflow original workflow task args.
 	originTaskArgs := &commonmodels.WorkflowV4{}
 	if err := commonmodels.IToi(workflow, originTaskArgs); err != nil {

@@ -55,6 +55,10 @@ func (j *SQLJob) SetOptions() error {
 	return nil
 }
 
+func (j *SQLJob) ClearOptions() error {
+	return nil
+}
+
 func (j *SQLJob) ClearSelectionField() error {
 	return nil
 }

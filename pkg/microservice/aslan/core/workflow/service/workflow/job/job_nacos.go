@@ -123,6 +123,10 @@ func (j *NacosJob) SetOptions() error {
 	return nil
 }
 
+func (j *NacosJob) ClearOptions() error {
+	return nil
+}
+
 func (j *NacosJob) ClearSelectionField() error {
 	return nil
 }

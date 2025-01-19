@@ -125,6 +125,17 @@ func (j *ApolloJob) SetOptions() error {
 	return nil
 }
 
+func (j *ApolloJob) ClearOptions() error {
+	j.spec = &commonmodels.ApolloJobSpec{}
+	if err := commonmodels.IToi(j.job.Spec, j.spec); err != nil {
+		return err
+	}
+
+	j.spec.NamespaceListOption = nil
+	j.job.Spec = j.spec
+	return nil
+}
+
 func (j *ApolloJob) ClearSelectionField() error {
 	j.spec = &commonmodels.ApolloJobSpec{}
 	if err := commonmodels.IToi(j.job.Spec, j.spec); err != nil {

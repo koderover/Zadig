@@ -103,6 +103,10 @@ func (j *JenkinsJob) SetOptions() error {
 	return nil
 }
 
+func (j *JenkinsJob) ClearOptions() error {
+	return nil
+}
+
 func (j *JenkinsJob) ClearSelectionField() error {
 	return nil
 }

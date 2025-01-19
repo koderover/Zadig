@@ -168,6 +168,17 @@ func (j *BlueGreenDeployV2Job) SetOptions() error {
 	return nil
 }
 
+func (j *BlueGreenDeployV2Job) ClearOptions() error {
+	j.spec = &commonmodels.BlueGreenDeployV2JobSpec{}
+	if err := commonmodels.IToi(j.job.Spec, j.spec); err != nil {
+		return err
+	}
+
+	j.spec.EnvOptions = nil
+	j.job.Spec = j.spec
+	return nil
+}
+
 func (j *BlueGreenDeployV2Job) ClearSelectionField() error {
 	j.spec = &commonmodels.BlueGreenDeployV2JobSpec{}
 	if err := commonmodels.IToi(j.job.Spec, j.spec); err != nil {

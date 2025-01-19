@@ -132,6 +132,17 @@ func (j *GrayRollbackJob) SetOptions() error {
 	return nil
 }
 
+func (j *GrayRollbackJob) ClearOptions() error {
+	j.spec = &commonmodels.GrayRollbackJobSpec{}
+	if err := commonmodels.IToi(j.job.Spec, j.spec); err != nil {
+		return err
+	}
+
+	j.spec.Targets = make([]*commonmodels.GrayRollbackTarget, 0)
+	j.job.Spec = j.spec
+	return nil
+}
+
 func (j *GrayRollbackJob) ClearSelectionField() error {
 	j.spec = &commonmodels.GrayRollbackJobSpec{}
 	if err := commonmodels.IToi(j.job.Spec, j.spec); err != nil {

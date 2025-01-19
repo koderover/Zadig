@@ -90,6 +90,17 @@ func (j *K8sPacthJob) SetOptions() error {
 	return nil
 }
 
+func (j *K8sPacthJob) ClearOptions() error {
+	j.spec = &commonmodels.K8sPatchJobSpec{}
+	if err := commonmodels.IToi(j.job.Spec, j.spec); err != nil {
+		return err
+	}
+
+	j.spec.PatchItemOptions = nil
+	j.job.Spec = j.spec
+	return nil
+}
+
 func (j *K8sPacthJob) ClearSelectionField() error {
 	j.spec = &commonmodels.K8sPatchJobSpec{}
 	if err := commonmodels.IToi(j.job.Spec, j.spec); err != nil {

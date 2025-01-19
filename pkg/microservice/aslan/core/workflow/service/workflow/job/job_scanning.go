@@ -77,6 +77,10 @@ func (j *ScanningJob) SetOptions() error {
 	return nil
 }
 
+func (j *ScanningJob) ClearOptions() error {
+	return nil
+}
+
 func (j *ScanningJob) ClearSelectionField() error {
 	return nil
 }

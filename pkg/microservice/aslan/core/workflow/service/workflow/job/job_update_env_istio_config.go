@@ -49,6 +49,10 @@ func (j *UpdateEnvIstioConfigJob) SetOptions() error {
 	return nil
 }
 
+func (j *UpdateEnvIstioConfigJob) ClearOptions() error {
+	return nil
+}
+
 func (j *UpdateEnvIstioConfigJob) ClearSelectionField() error {
 	return nil
 }

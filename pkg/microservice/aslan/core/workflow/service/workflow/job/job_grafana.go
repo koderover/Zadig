@@ -57,6 +57,10 @@ func (j *GrafanaJob) SetOptions() error {
 	return nil
 }
 
+func (j *GrafanaJob) ClearOptions() error {
+	return nil
+}
+
 func (j *GrafanaJob) ClearSelectionField() error {
 	return nil
 }

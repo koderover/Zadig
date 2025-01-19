@@ -55,6 +55,10 @@ func (j *BlueGreenReleaseV2Job) SetOptions() error {
 	return nil
 }
 
+func (j *BlueGreenReleaseV2Job) ClearOptions() error {
+	return nil
+}
+
 func (j *BlueGreenReleaseV2Job) ClearSelectionField() error {
 	return nil
 }

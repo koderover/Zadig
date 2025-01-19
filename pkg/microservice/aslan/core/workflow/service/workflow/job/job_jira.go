@@ -57,6 +57,10 @@ func (j *JiraJob) SetOptions() error {
 	return nil
 }
 
+func (j *JiraJob) ClearOptions() error {
+	return nil
+}
+
 func (j *JiraJob) ClearSelectionField() error {
 	return nil
 }

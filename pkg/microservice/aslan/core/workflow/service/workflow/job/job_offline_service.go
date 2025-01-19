@@ -56,6 +56,10 @@ func (j *OfflineServiceJob) SetOptions() error {
 	return nil
 }
 
+func (j *OfflineServiceJob) ClearOptions() error {
+	return nil
+}
+
 func (j *OfflineServiceJob) ClearSelectionField() error {
 	return nil
 }

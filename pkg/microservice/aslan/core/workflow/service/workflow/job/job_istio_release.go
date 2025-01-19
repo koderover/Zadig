@@ -90,6 +90,17 @@ func (j *IstioReleaseJob) SetOptions() error {
 	return nil
 }
 
+func (j *IstioReleaseJob) ClearOptions() error {
+	j.spec = &commonmodels.IstioJobSpec{}
+	if err := commonmodels.IToi(j.job.Spec, j.spec); err != nil {
+		return err
+	}
+
+	j.spec.TargetOptions = nil
+	j.job.Spec = j.spec
+	return nil
+}
+
 func (j *IstioReleaseJob) ClearSelectionField() error {
 	j.spec = &commonmodels.IstioJobSpec{}
 	if err := commonmodels.IToi(j.job.Spec, j.spec); err != nil {

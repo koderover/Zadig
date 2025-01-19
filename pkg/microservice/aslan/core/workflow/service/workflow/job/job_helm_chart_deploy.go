@@ -149,6 +149,17 @@ func (j *HelmChartDeployJob) SetOptions() error {
 	return nil
 }
 
+func (j *HelmChartDeployJob) ClearOptions() error {
+	j.spec = &commonmodels.ZadigHelmChartDeployJobSpec{}
+	if err := commonmodels.IToi(j.job.Spec, j.spec); err != nil {
+		return err
+	}
+
+	j.spec.EnvOptions = nil
+	j.job.Spec = j.spec
+	return nil
+}
+
 func (j *HelmChartDeployJob) ClearSelectionField() error {
 	j.spec = &commonmodels.ZadigHelmChartDeployJobSpec{}
 	if err := commonmodels.IToi(j.job.Spec, j.spec); err != nil {

@@ -95,6 +95,10 @@ func (j *WorkflowTriggerJob) SetOptions() error {
 	return nil
 }
 
+func (j *WorkflowTriggerJob) ClearOptions() error {
+	return nil
+}
+
 func (j *WorkflowTriggerJob) ClearSelectionField() error {
 	j.spec = &commonmodels.WorkflowTriggerJobSpec{}
 	if err := commonmodels.IToi(j.job.Spec, j.spec); err != nil {

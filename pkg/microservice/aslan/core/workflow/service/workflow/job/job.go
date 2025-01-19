@@ -53,6 +53,8 @@ type JobCtl interface {
 	SetPreset() error
 	// SetOptions sets all the possible options for the workflow
 	SetOptions() error
+	// ClearOptions clears the option field to save space for db and memory
+	ClearOptions() error
 	ClearSelectionField() error
 	ToJobs(taskID int64) ([]*commonmodels.JobTask, error)
 	// MergeArgs merge the current workflow with the user input: args
@@ -180,6 +182,14 @@ func SetOptions(job *commonmodels.Job, workflow *commonmodels.WorkflowV4) error 
 		return warpJobError(job.Name, err)
 	}
 	return jobCtl.SetOptions()
+}
+
+func ClearOptions(job *commonmodels.Job, workflow *commonmodels.WorkflowV4) error {
+	jobCtl, err := InitJobCtl(job, workflow)
+	if err != nil {
+		return warpJobError(job.Name, err)
+	}
+	return jobCtl.ClearOptions()
 }
 
 func UpdateWithLatestSetting(job *commonmodels.Job, workflow *commonmodels.WorkflowV4) error {

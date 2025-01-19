@@ -90,6 +90,17 @@ func (j *GrayReleaseJob) SetOptions() error {
 	return nil
 }
 
+func (j *GrayReleaseJob) ClearOptions() error {
+	j.spec = &commonmodels.GrayReleaseJobSpec{}
+	if err := commonmodels.IToi(j.job.Spec, j.spec); err != nil {
+		return err
+	}
+
+	j.spec.TargetOptions = nil
+	j.job.Spec = j.spec
+	return nil
+}
+
 func (j *GrayReleaseJob) ClearSelectionField() error {
 	j.spec = &commonmodels.GrayReleaseJobSpec{}
 	if err := commonmodels.IToiYaml(j.job.Spec, j.spec); err != nil {

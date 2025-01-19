@@ -379,6 +379,17 @@ func (j *DeployJob) SetOptions() error {
 	return nil
 }
 
+func (j *DeployJob) ClearOptions() error {
+	j.spec = &commonmodels.ZadigDeployJobSpec{}
+	if err := commonmodels.IToi(j.job.Spec, j.spec); err != nil {
+		return err
+	}
+
+	j.spec.EnvOptions = nil
+	j.job.Spec = j.spec
+	return nil
+}
+
 func (j *DeployJob) ClearSelectionField() error {
 	j.spec = &commonmodels.ZadigDeployJobSpec{}
 	if err := commonmodels.IToi(j.job.Spec, j.spec); err != nil {

@@ -54,6 +54,10 @@ func (j *BlueKingJob) SetOptions() error {
 	return nil
 }
 
+func (j *BlueKingJob) ClearOptions() error {
+	return nil
+}
+
 func (j *BlueKingJob) ClearSelectionField() error {
 	j.spec = &commonmodels.BlueKingJobSpec{}
 	if err := commonmodels.IToi(j.job.Spec, j.spec); err != nil {

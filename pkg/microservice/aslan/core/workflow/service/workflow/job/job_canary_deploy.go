@@ -98,6 +98,17 @@ func (j *CanaryDeployJob) SetOptions() error {
 	return nil
 }
 
+func (j *CanaryDeployJob) ClearOptions() error {
+	j.spec = &commonmodels.CanaryDeployJobSpec{}
+	if err := commonmodels.IToi(j.job.Spec, j.spec); err != nil {
+		return err
+	}
+
+	j.spec.TargetOptions = nil
+	j.job.Spec = j.spec
+	return nil
+}
+
 func (j *CanaryDeployJob) ClearSelectionField() error {
 	j.spec = &commonmodels.CanaryDeployJobSpec{}
 	if err := commonmodels.IToi(j.job.Spec, j.spec); err != nil {

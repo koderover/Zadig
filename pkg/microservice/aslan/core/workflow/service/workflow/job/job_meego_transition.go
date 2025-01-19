@@ -55,6 +55,10 @@ func (j *MeegoTransitionJob) SetOptions() error {
 	return nil
 }
 
+func (j *MeegoTransitionJob) ClearOptions() error {
+	return nil
+}
+
 func (j *MeegoTransitionJob) ClearSelectionField() error {
 	return nil
 }

@@ -110,6 +110,10 @@ func (j *FreeStyleJob) SetOptions() error {
 	return nil
 }
 
+func (j *FreeStyleJob) ClearOptions() error {
+	return nil
+}
+
 func (j *FreeStyleJob) ClearSelectionField() error {
 	j.spec = &commonmodels.FreestyleJobSpec{}
 	if err := commonmodels.IToi(j.job.Spec, j.spec); err != nil {

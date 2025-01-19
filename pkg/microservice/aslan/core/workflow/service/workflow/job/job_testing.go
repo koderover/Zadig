@@ -104,6 +104,10 @@ func (j *TestingJob) SetOptions() error {
 	return nil
 }
 
+func (j *TestingJob) ClearOptions() error {
+	return nil
+}
+
 func (j *TestingJob) ClearSelectionField() error {
 	j.spec = &commonmodels.ZadigTestingJobSpec{}
 	if err := commonmodels.IToiYaml(j.job.Spec, j.spec); err != nil {
