@@ -89,18 +89,18 @@ func (j *VMDeployJob) SetPreset() error {
 		if err != nil {
 			err = fmt.Errorf("can't find service %s in project %s, error: %v", serviceAndVMDeploy.ServiceName, j.workflow.Project, err)
 			log.Error(err)
-			return fmt.Errorf(err.Error())
+			return err
 		}
 		if templateSvc.BuildName == "" {
 			err = fmt.Errorf("service %s in project %s has no deploy", serviceAndVMDeploy.ServiceName, j.workflow.Project)
 			log.Error(err)
-			return fmt.Errorf(err.Error())
+			return err
 		}
 		build, err := commonrepo.NewBuildColl().Find(&commonrepo.BuildFindOption{Name: templateSvc.BuildName, ProductName: j.workflow.Project})
 		if err != nil {
 			err = fmt.Errorf("can't find build %s in project %s, error: %v", templateSvc.BuildName, j.workflow.Project, err)
 			log.Error(err)
-			return fmt.Errorf(err.Error())
+			return err
 		}
 		serviceAndVMDeploy.Repos = mergeRepos(serviceAndVMDeploy.Repos, build.DeployRepos)
 	}
@@ -655,7 +655,7 @@ func (j *VMDeployJob) getOriginReferedJobTargets(jobName string, taskID int) ([]
 				if err := commonmodels.IToi(job.Spec, buildSpec); err != nil {
 					return serviceAndVMDeploys, err
 				}
-				for _, build := range buildSpec.ServiceAndBuilds {
+				for i, build := range buildSpec.ServiceAndBuilds {
 					serviceAndVMDeploys = append(serviceAndVMDeploys, &commonmodels.ServiceAndVMDeploy{
 						ServiceName:   build.ServiceName,
 						ServiceModule: build.ServiceModule,
@@ -664,7 +664,7 @@ func (j *VMDeployJob) getOriginReferedJobTargets(jobName string, taskID int) ([]
 						TaskID:        taskID,
 						WorkflowName:  j.workflow.Name,
 						WorkflowType:  config.WorkflowTypeV4,
-						JobTaskName:   jobNameFormat(build.ServiceName + "-" + build.ServiceModule + "-" + jobName),
+						JobTaskName:   GenJobName(j.workflow, job.Name, i),
 					})
 					log.Infof("DeployJob ToJobs getOriginReferedJobTargets: workflow %s service %s, module %s, fileName %s",
 						j.workflow.Name, build.ServiceName, build.ServiceModule, build.Package)
