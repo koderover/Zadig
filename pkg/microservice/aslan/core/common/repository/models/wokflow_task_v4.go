@@ -234,11 +234,12 @@ type Resource struct {
 }
 
 type JobTaskHelmDeploySpec struct {
-	Env            string                 `bson:"env"                              json:"env"                                 yaml:"env"`
-	ServiceName    string                 `bson:"service_name"                     json:"service_name"                        yaml:"service_name"`
-	ServiceType    string                 `bson:"service_type"                     json:"service_type"                        yaml:"service_type"`
-	DeployContents []config.DeployContent `bson:"deploy_contents"                  json:"deploy_contents"                     yaml:"deploy_contents"`
-	KeyVals        []*ServiceKeyVal       `bson:"key_vals"                         json:"key_vals"                            yaml:"key_vals"`
+	Env            string                  `bson:"env"                              json:"env"                                 yaml:"env"`
+	Source         config.DeploySourceType `bson:"source"                           json:"source"                   yaml:"source" `
+	ServiceName    string                  `bson:"service_name"                     json:"service_name"                        yaml:"service_name"`
+	ServiceType    string                  `bson:"service_type"                     json:"service_type"                        yaml:"service_type"`
+	DeployContents []config.DeployContent  `bson:"deploy_contents"                  json:"deploy_contents"                     yaml:"deploy_contents"`
+	KeyVals        []*ServiceKeyVal        `bson:"key_vals"                         json:"key_vals"                            yaml:"key_vals"`
 	// VariableYaml stores the variable YAML provided by user
 	VariableYaml string `bson:"variable_yaml"                    json:"variable_yaml"                       yaml:"variable_yaml"`
 	// IsProduction added since 1.18, indicator of production environment deployment job
@@ -253,6 +254,14 @@ type JobTaskHelmDeploySpec struct {
 	ReleaseName        string                   `bson:"release_name"                     json:"release_name"                        yaml:"release_name"`
 	Timeout            int                      `bson:"timeout"                          json:"timeout"                             yaml:"timeout"`
 	ReplaceResources   []Resource               `bson:"replace_resources"                json:"replace_resources"                   yaml:"replace_resources"`
+}
+
+func (j *JobTaskHelmDeploySpec) GetDeployImages() []string {
+	images := make([]string, 0)
+	for _, imageAndModule := range j.ImageAndModules {
+		images = append(images, imageAndModule.Image)
+	}
+	return images
 }
 
 type JobTaskHelmChartDeploySpec struct {

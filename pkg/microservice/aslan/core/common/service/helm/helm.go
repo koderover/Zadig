@@ -21,22 +21,29 @@ import (
 	"fmt"
 	"io/fs"
 	"path"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
+	"k8s.io/apimachinery/pkg/util/sets"
+	"sigs.k8s.io/yaml"
 
 	"github.com/koderover/zadig/v2/pkg/microservice/aslan/config"
 	"github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/repository/models"
 	commonmodels "github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/repository/models"
+	templatemodels "github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/repository/models/template"
 	commonrepo "github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/repository/mongodb"
 	"github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/repository/mongodb/template"
 	fsservice "github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/service/fs"
+	"github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/service/repository"
 	commonutil "github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/util"
 	"github.com/koderover/zadig/v2/pkg/setting"
 	"github.com/koderover/zadig/v2/pkg/tool/cache"
 	"github.com/koderover/zadig/v2/pkg/tool/crypto"
+	helmtool "github.com/koderover/zadig/v2/pkg/tool/helmclient"
 	"github.com/koderover/zadig/v2/pkg/tool/log"
 	"github.com/koderover/zadig/v2/pkg/tool/mongo"
+	"github.com/koderover/zadig/v2/pkg/util/converter"
 	"github.com/pkg/errors"
 )
 
@@ -329,4 +336,275 @@ func UpdateServicesGroupInEnv(productName, envName string, index int, group []*m
 	}
 
 	return mongo.CommitTransaction(session)
+}
+
+type HelmDeployService struct {
+}
+
+func NewHelmDeployService() *HelmDeployService {
+	return &HelmDeployService{}
+}
+
+// GeneMergedValues generate values.yaml used to install or upgrade helm chart, like param in after option -f
+// defaultValues: global values yaml
+// productSvc: environment service, contains service's values yaml, override kvs and zadig recorded containers. And productSvc will be updated with correct image and values yaml in this function
+// images: ovrride images, used in workflow and replace image in environment
+func (s *HelmDeployService) NewGeneMergedValues(productSvc *commonmodels.ProductService, defaultValues string, images []string) (string, error) {
+	envValuesYaml := productSvc.GetServiceRender().GetOverrideYaml()
+	overrideKVs := productSvc.GetServiceRender().OverrideValues
+
+	imageMap := make(map[string]string)
+	for _, image := range images {
+		name := commonutil.ExtractImageName(image)
+		imageMap[name] = image
+	}
+
+	valuesMap := make(map[string]interface{})
+	err := yaml.Unmarshal([]byte(envValuesYaml), &valuesMap)
+	if err != nil {
+		return "", fmt.Errorf("Failed to unmarshall yaml, err %s", err)
+	}
+
+	flatValuesMap, err := converter.Flatten(valuesMap)
+	if err != nil {
+		return "", fmt.Errorf("failed to flatten values map, err: %s", err)
+	}
+
+	// 1. calc weather to add container image into values yaml
+	mergedContainers := []*commonmodels.Container{}
+	for _, container := range productSvc.Containers {
+		if container.ImagePath == nil {
+			return "", fmt.Errorf("failed to parse image for container:%s", container.Image)
+		}
+
+		// find corresponding image in values
+		imageSearchRule := &templatemodels.ImageSearchingRule{
+			Repo:      container.ImagePath.Repo,
+			Namespace: container.ImagePath.Namespace,
+			Image:     container.ImagePath.Image,
+			Tag:       container.ImagePath.Tag,
+		}
+		pattern := imageSearchRule.GetSearchingPattern()
+		imageUrl, err := commonutil.GeneImageURI(pattern, flatValuesMap)
+		if err != nil {
+			return "", fmt.Errorf("failed to get image url for container:%s", container.Image)
+		}
+
+		name := commonutil.ExtractImageName(imageUrl)
+
+		if container.ImageName == name {
+			// find corresponding image in values
+			if imageMap[name] != "" {
+				// if found image in images, and the images are from build job, we should override it
+				container.Image = imageMap[name]
+				mergedContainers = append(mergedContainers, container)
+			}
+		} else {
+			// not found corresponding image in values
+			// add container image into values
+			log.Debugf("not found service module %s's image in values, add it", container.ImageName)
+			mergedContainers = append(mergedContainers, container)
+		}
+	}
+
+	// 2. replace image into values yaml
+	serviceName := productSvc.ServiceName
+	imageValuesMaps := make([]map[string]interface{}, 0)
+	for _, mergedContainer := range mergedContainers {
+		// log.Debugf("merged container: %+v", mergedContainer)
+		// prepare image replace info
+		replaceValuesMap, err := commonutil.AssignImageData(mergedContainer.Image, commonutil.GetValidMatchData(mergedContainer.ImagePath))
+		if err != nil {
+			return "", fmt.Errorf("failed to pase image uri %s/%s, err %s", productSvc.ProductName, serviceName, err.Error())
+		}
+		imageValuesMaps = append(imageValuesMaps, replaceValuesMap)
+	}
+
+	// log.Debugf("imageValuesMaps: %+v", imageValuesMaps)
+	replacedEnvValuesYaml, err := commonutil.ReplaceImage(envValuesYaml, imageValuesMaps...)
+	if err != nil {
+		return "", fmt.Errorf("failed to replace image uri %s/%s, err %s", productSvc.ProductName, serviceName, err.Error())
+
+	}
+	if replacedEnvValuesYaml == "" {
+		return "", fmt.Errorf("failed to set new image uri into service's values.yaml %s/%s", productSvc.ProductName, serviceName)
+	}
+	productSvc.GetServiceRender().SetOverrideYaml(replacedEnvValuesYaml)
+
+	// 3. merge override values and kvs into values yaml
+	finalValuesYaml, err := helmtool.MergeOverrideValues("", defaultValues, replacedEnvValuesYaml, overrideKVs, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to merge override values, err: %s", err)
+	}
+	// log.Debugf("replacedEnvValuesYaml: %s", replacedEnvValuesYaml)
+	// log.Debugf("finalValuesYaml: %s", finalValuesYaml)
+
+	// 4. update container image in productSvc
+	valuesMap = make(map[string]interface{})
+	err = yaml.Unmarshal([]byte(finalValuesYaml), &valuesMap)
+	if err != nil {
+		return "", fmt.Errorf("Failed to unmarshall yaml, err %s", err)
+	}
+
+	flatValuesMap, err = converter.Flatten(valuesMap)
+	if err != nil {
+		return "", fmt.Errorf("failed to flatten values map, err: %s", err)
+	}
+	for _, container := range productSvc.Containers {
+		if container.ImagePath == nil {
+			return "", fmt.Errorf("failed to parse image for container:%s", container.Image)
+		}
+
+		imageSearchRule := &templatemodels.ImageSearchingRule{
+			Repo:      container.ImagePath.Repo,
+			Namespace: container.ImagePath.Namespace,
+			Image:     container.ImagePath.Image,
+			Tag:       container.ImagePath.Tag,
+		}
+		pattern := imageSearchRule.GetSearchingPattern()
+		imageUrl, err := commonutil.GeneImageURI(pattern, flatValuesMap)
+		if err != nil {
+			return "", fmt.Errorf("failed to get image url for container:%s", container.Image)
+		}
+		log.Debugf("final image url: %s", imageUrl)
+		container.Image = imageUrl
+	}
+
+	return finalValuesYaml, nil
+}
+
+func (s *HelmDeployService) GeneFullValues(serviceValuesYaml, envValuesYaml string) (string, error) {
+	finalValuesYaml, err := helmtool.MergeOverrideValues(serviceValuesYaml, "", envValuesYaml, "", nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to merge override values, err: %s", err)
+	}
+
+	return finalValuesYaml, nil
+}
+
+// Generate new environment service base on updateServiceRevision
+// Will merge template service's containers into environment service if updateServiceRevision is true
+// And get template service's values yaml
+func (s *HelmDeployService) GenNewEnvService(prod *commonmodels.Product, serviceName string, updateServiceRevision bool) (*commonmodels.ProductService, *commonmodels.Service, error) {
+	var err error
+	tmplSvc := &commonmodels.Service{}
+	prodSvc := prod.GetServiceMap()[serviceName]
+	if !updateServiceRevision {
+		if prodSvc == nil {
+			return nil, nil, fmt.Errorf("service %s not found in env %s/%s", serviceName, prod.ProductName, prod.EnvName)
+		}
+
+		svcFindOption := &commonrepo.ServiceFindOption{
+			ProductName: prod.ProductName,
+			ServiceName: serviceName,
+			Revision:    prodSvc.Revision,
+		}
+		tmplSvc, err = repository.QueryTemplateService(svcFindOption, prod.Production)
+		if err != nil {
+			return nil, nil, errors.Wrapf(err, "failed to find service %s/%d in product %s", serviceName, svcFindOption.Revision, prod.ProductName)
+		}
+
+		prodSvc.ValuesYaml = tmplSvc.HelmChart.ValuesYaml
+	} else {
+		svcFindOption := &commonrepo.ServiceFindOption{
+			ProductName: prod.ProductName,
+			ServiceName: serviceName,
+		}
+		tmplSvc, err = repository.QueryTemplateService(svcFindOption, prod.Production)
+		if err != nil {
+			return nil, nil, errors.Wrapf(err, "failed to find service %s/%d in product %s", serviceName, svcFindOption.Revision, prod.ProductName)
+		}
+
+		if prodSvc == nil {
+			prodSvc = &commonmodels.ProductService{
+				ServiceName: serviceName,
+				Type:        tmplSvc.Type,
+				Revision:    tmplSvc.Revision,
+				Containers:  tmplSvc.Containers,
+				ValuesYaml:  tmplSvc.HelmChart.ValuesYaml,
+			}
+		} else {
+			containerMap := make(map[string]*commonmodels.Container)
+			for _, container := range prodSvc.Containers {
+				containerMap[container.Name] = container
+			}
+
+			for _, templateContainer := range tmplSvc.Containers {
+				if containerMap[templateContainer.Name] == nil {
+					prodSvc.Containers = append(prodSvc.Containers, templateContainer)
+				} else {
+					containerMap[templateContainer.Name].ImagePath = templateContainer.ImagePath
+					containerMap[templateContainer.Name].Type = templateContainer.Type
+				}
+			}
+		}
+	}
+	return prodSvc, tmplSvc, nil
+}
+
+// func (s *HelmDeployService) MergedContainerImage(prodSvc *commonmodels.ProductService, images []string) (*commonmodels.ProductService, error) {
+// 	imageMap := make(map[string]string)
+// 	mergedContainers := []*commonmodels.Container{}
+// 	for _, image := range images {
+// 		imageMap[commonutil.ExtractImageName(image)] = image
+// 	}
+// 	for _, container := range prodSvc.Containers {
+// 		overrideImage, ok := imageMap[container.ImageName]
+// 		if ok {
+// 			container.Image = overrideImage
+// 			mergedContainers = append(mergedContainers, container)
+// 		}
+// 	}
+
+// 	imageValuesMaps := make([]map[string]interface{}, 0)
+// 	for _, targetContainer := range mergedContainers {
+// 		// prepare image replace info
+// 		replaceValuesMap, err := commonutil.AssignImageData(targetContainer.Image, commonutil.GetValidMatchData(targetContainer.ImagePath))
+// 		if err != nil {
+// 			return nil, fmt.Errorf("failed to pase image uri %s/%s, err %s", prodSvc.ProductName, prodSvc.ServiceName, err.Error())
+// 		}
+// 		imageValuesMaps = append(imageValuesMaps, replaceValuesMap)
+// 	}
+
+// 	// replace image into service's values.yaml
+// 	mergedValuesYaml, err := commonutil.ReplaceImage(prodSvc.GetServiceRender().GetOverrideYaml(), imageValuesMaps...)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to replace image uri %s/%s, err %s", prodSvc.ProductName, prodSvc.ServiceName, err.Error())
+// 	}
+// 	prodSvc.Render.SetOverrideYaml(mergedValuesYaml)
+
+// 	return prodSvc, nil
+// }
+
+func (s *HelmDeployService) CheckReleaseInstalledByOtherEnv(releaseNames sets.String, productInfo *commonmodels.Product) error {
+	sharedNSEnvList := make(map[string]*commonmodels.Product)
+	insertEnvData := func(release string, env *commonmodels.Product) {
+		sharedNSEnvList[release] = env
+	}
+	envs, err := commonrepo.NewProductColl().ListEnvByNamespace(productInfo.ClusterID, productInfo.Namespace)
+	if err != nil {
+		log.Errorf("Failed to list existed namespace from the env List, error: %s", err)
+		return err
+	}
+
+	for _, env := range envs {
+		if env.ProductName == productInfo.ProductName && env.EnvName == productInfo.EnvName {
+			continue
+		}
+		for _, svc := range env.GetSvcList() {
+			if releaseNames.Has(svc.ReleaseName) {
+				insertEnvData(svc.ReleaseName, env)
+				break
+			}
+		}
+	}
+
+	if len(sharedNSEnvList) == 0 {
+		return nil
+	}
+	usedEnvStr := make([]string, 0)
+	for releasename, env := range sharedNSEnvList {
+		usedEnvStr = append(usedEnvStr, fmt.Sprintf("%s: %s/%s", releasename, env.ProductName, env.EnvName))
+	}
+	return fmt.Errorf("release is installed by other envs: %v", strings.Join(usedEnvStr, ","))
 }

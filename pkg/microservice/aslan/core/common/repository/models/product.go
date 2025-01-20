@@ -179,6 +179,7 @@ type ProductService struct {
 	RenderedYaml   string                          `bson:"rendered_yaml,omitempty"    json:"rendered_yaml,omitempty"`
 	VariableYaml   string                          `bson:"-"                          json:"variable_yaml,omitempty"`
 	VariableKVs    []*commontypes.RenderVariableKV `bson:"-"                          json:"variable_kvs,omitempty"`
+	ValuesYaml     string                          `bson:"-"                          json:"values_yaml,omitempty"`
 	Updatable      bool                            `bson:"-"                          json:"updatable"`
 	DeployStrategy string                          `bson:"-"                          json:"deploy_strategy"`
 }
@@ -368,7 +369,7 @@ func (p *Product) LintServices() {
 				svcMap[key] = svc
 				return true
 			}
-			log.Warnf("service %s has older revision %d, drop it", key, svc.Revision)
+			log.Warnf("%s/%s's service %s has older revision %d, drop it", p.ProductName, p.EnvName, key, svc.Revision)
 			return false
 		}
 		svcMap[key] = svc

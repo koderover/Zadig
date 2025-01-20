@@ -22,13 +22,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
-	"os"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
 	"github.com/hashicorp/go-multierror"
 	"github.com/pkg/errors"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -1078,7 +1076,7 @@ func updateHelmProduct(productName, envName, username, requestID string, overrid
 
 				if svr.Render == nil {
 					svr.GetServiceRender().ChartVersion = templateSvcMap[svr.ServiceName].HelmChart.Version
-					svr.GetServiceRender().ValuesYaml = templateSvcMap[svr.ServiceName].HelmChart.ValuesYaml
+					// svr.GetServiceRender().ValuesYaml = templateSvcMap[svr.ServiceName].HelmChart.ValuesYaml
 				}
 				svr.ReleaseName = releaseName
 			}
@@ -1319,8 +1317,8 @@ func updateHelmChartProduct(productName, envName, username, requestID string, ov
 	return nil
 }
 
-func genImageFromYaml(c *commonmodels.Container, valuesYaml, defaultValues, overrideYaml, overrideValues string) (string, error) {
-	mergeYaml, err := helmtool.MergeOverrideValues(valuesYaml, defaultValues, overrideYaml, overrideValues, nil)
+func genImageFromYaml(c *commonmodels.Container, serviceValuesYaml, defaultValues, overrideYaml, overrideValues string) (string, error) {
+	mergeYaml, err := helmtool.MergeOverrideValues(serviceValuesYaml, defaultValues, overrideYaml, overrideValues, nil)
 	if err != nil {
 		return "", err
 	}
@@ -1340,6 +1338,34 @@ func genImageFromYaml(c *commonmodels.Container, valuesYaml, defaultValues, over
 	}
 	return image, nil
 }
+
+// func genImageFromYaml2(prodSvc *commonmodels.ProductService, c *commonmodels.Container, valuesYaml, defaultValues string) (string, error) {
+// 	helmDeploySvc := helmservice.NewHelmDeployService()
+// 	// newEnvSvc, tmplSvc, err := helmDeploySvc.GenNewEnvService(env, serviceName, true)
+// 	// if err != nil {
+// 	// 	return "", fmt.Errorf("failed to generate new env service, error: %v", err)
+// 	// }
+// 	mergedValues, err := helmDeploySvc.NewGeneMergedValues(prodSvc, defaultValues, nil)
+// 	if err != nil {
+// 		return "", fmt.Errorf("failed to generate merged values, error: %v", err)
+// 	}
+// 	helmDeploySvc.GeneFullValues()
+// 	mergedValuesYamlFlattenMap, err := converter.YamlToFlatMap([]byte(mergeYaml))
+// 	if err != nil {
+// 		return "", err
+// 	}
+// 	imageRule := templatemodels.ImageSearchingRule{
+// 		Repo:      c.ImagePath.Repo,
+// 		Namespace: c.ImagePath.Namespace,
+// 		Image:     c.ImagePath.Image,
+// 		Tag:       c.ImagePath.Tag,
+// 	}
+// 	image, err := commonutil.GeneImageURI(imageRule.GetSearchingPattern(), mergedValuesYamlFlattenMap)
+// 	if err != nil {
+// 		return "", err
+// 	}
+// 	return image, nil
+// }
 
 func prepareEstimateDataForEnvCreation(productName, serviceName string, production bool, isHelmChartDeploy bool, log *zap.SugaredLogger) (*commonmodels.ProductService, *commonmodels.Service, error) {
 	if isHelmChartDeploy {
@@ -1377,7 +1403,7 @@ func prepareEstimateDataForEnvCreation(productName, serviceName string, producti
 			Render: &templatemodels.ServiceRender{
 				ServiceName:  serviceName,
 				OverrideYaml: &templatemodels.CustomYaml{},
-				ValuesYaml:   templateService.HelmChart.ValuesYaml,
+				// ValuesYaml:   templateService.HelmChart.ValuesYaml,
 			},
 		}
 
@@ -1451,7 +1477,7 @@ func prepareEstimateDataForEnvUpdate(productName, envName, serviceOrReleaseName,
 				OverrideYaml: &templatemodels.CustomYaml{},
 			}
 		}
-		prodSvc.Render.ValuesYaml = templateService.HelmChart.ValuesYaml
+		// prodSvc.Render.ValuesYaml = templateService.HelmChart.ValuesYaml
 		prodSvc.Render.ChartVersion = templateService.HelmChart.Version
 	}
 
@@ -1519,8 +1545,6 @@ func GeneEstimatedValues(productName, envName, serviceOrReleaseName, scene, form
 	targetChart.OverrideYaml.YamlContent = arg.OverrideYaml
 	targetChart.OverrideValues = tempArg.ToOverrideValueString()
 
-	images := make([]string, 0)
-
 	mergedValues := ""
 	if isHelmChartDeploy {
 		chartRepo, err := commonrepo.NewHelmRepoColl().Find(&commonrepo.HelmRepoFindOption{RepoName: arg.ChartRepo})
@@ -1538,19 +1562,24 @@ func GeneEstimatedValues(productName, envName, serviceOrReleaseName, scene, form
 			return nil, fmt.Errorf("failed to get chart values, chartRepo: %s, chartName: %s, chartVersion: %s, err %s", arg.ChartRepo, arg.ChartName, arg.ChartVersion, err)
 		}
 
-		mergedValues, err = helmtool.MergeOverrideValues(valuesYaml, productInfo.DefaultValues, targetChart.GetOverrideYaml(), targetChart.OverrideValues, nil)
-		if err != nil {
-			return nil, e.ErrUpdateRenderSet.AddDesc(fmt.Sprintf("failed to merge override values, err %s", err))
-		}
-	} else {
-		containers := kube.CalculateContainer(productSvc, tmplSvc, tmplSvc.Containers, productInfo)
-		for _, container := range containers {
-			images = append(images, container.Image)
-		}
-
-		mergedValues, err = kube.GeneMergedValues(productSvc, productSvc.GetServiceRender(), productInfo.DefaultValues, images, true)
+		helmDeploySvc := helmservice.NewHelmDeployService()
+		mergedValues, err = helmDeploySvc.NewGeneMergedValues(productSvc, productInfo.DefaultValues, nil)
 		if err != nil {
 			return nil, e.ErrUpdateRenderSet.AddDesc(fmt.Sprintf("failed to merge values, err %s", err))
+		}
+		mergedValues, err = helmDeploySvc.GeneFullValues(valuesYaml, mergedValues)
+		if err != nil {
+			return nil, e.ErrUpdateRenderSet.AddDesc(fmt.Sprintf("failed to generate full values, err %s", err))
+		}
+	} else {
+		helmDeploySvc := helmservice.NewHelmDeployService()
+		mergedValues, err = helmDeploySvc.NewGeneMergedValues(productSvc, productInfo.DefaultValues, nil)
+		if err != nil {
+			return nil, e.ErrUpdateRenderSet.AddDesc(fmt.Sprintf("failed to merge values, err %s", err))
+		}
+		mergedValues, err = helmDeploySvc.GeneFullValues(tmplSvc.HelmChart.ValuesYaml, mergedValues)
+		if err != nil {
+			return nil, e.ErrUpdateRenderSet.AddDesc(fmt.Sprintf("failed to generate full values, err %s", err))
 		}
 	}
 
@@ -1721,7 +1750,7 @@ func UpdateHelmProductCharts(productName, envName, userName, requestID string, p
 				return e.ErrUpdateEnv.AddDesc(fmt.Sprintf("failed to find current chart values for service: %s", serviceName))
 			}
 
-			arg.FillRenderChartModel(rcValues, rcValues.ChartVersion, rcValues.ValuesYaml)
+			arg.FillRenderChartModel(rcValues, rcValues.ChartVersion)
 			changedCharts = append(changedCharts, arg)
 			updatedRcMap[serviceName] = rcValues
 		}
@@ -1789,7 +1818,7 @@ func SyncHelmProductEnvironment(productName, envName, requestID string, log *zap
 
 	updatedRCMap := make(map[string]*templatemodels.ServiceRender)
 
-	changed, defaultValues, err := SyncYamlFromSource(product.YamlData, product.DefaultValues)
+	changed, defaultValues, err := SyncYamlFromSource(product.YamlData, product.DefaultValues, product.DefaultValues)
 	if err != nil {
 		log.Errorf("failed to update default values of env %s:%s", product.ProductName, product.EnvName)
 		return err
@@ -1804,12 +1833,13 @@ func SyncHelmProductEnvironment(productName, envName, requestID string, log *zap
 		if chartInfo.OverrideYaml == nil {
 			continue
 		}
-		changed, values, err := SyncYamlFromSource(chartInfo.OverrideYaml, chartInfo.OverrideYaml.YamlContent)
+		changed, values, err := SyncYamlFromSource(chartInfo.OverrideYaml, chartInfo.OverrideYaml.YamlContent, chartInfo.OverrideYaml.AutoSyncYaml)
 		if err != nil {
 			return err
 		}
 		if changed {
 			chartInfo.OverrideYaml.YamlContent = values
+			chartInfo.OverrideYaml.AutoSyncYaml = values
 			updatedRCMap[chartInfo.ServiceName] = chartInfo
 		}
 	}
@@ -1883,10 +1913,6 @@ func updateK8sProductVariable(productResp *commonmodels.Product, userName, reque
 
 func updateHelmProductVariable(productResp *commonmodels.Product, userName, requestID string, log *zap.SugaredLogger) error {
 	envName, productName := productResp.EnvName, productResp.ProductName
-	//restConfig, err := kube.GetRESTConfig(productResp.ClusterID)
-	//if err != nil {
-	//	return e.ErrUpdateEnv.AddErr(err)
-	//}
 
 	helmClient, err := helmtool.NewClientFromNamespace(productResp.ClusterID, productResp.Namespace)
 	if err != nil {
@@ -1905,7 +1931,7 @@ func updateHelmProductVariable(productResp *commonmodels.Product, userName, requ
 	}
 
 	go func() {
-		err := proceedHelmRelease(productResp, helmClient, nil, userName, log)
+		err := kube.DeployMultiHelmRelease(productResp, helmClient, nil, userName, log)
 		if err != nil {
 			log.Errorf("error occurred when upgrading services in env: %s/%s, err: %s ", productName, envName, err)
 			// 发送更新产品失败消息给用户
@@ -2737,55 +2763,6 @@ func ensureKubeEnv(namespace, registryId string, customLabels map[string]string,
 	return nil
 }
 
-func buildInstallParam(defaultValues string, productInfo *commonmodels.Product, renderChart *templatemodels.ServiceRender, productSvc *commonmodels.ProductService) (*kube.ReleaseInstallParam, error) {
-	productName, namespace, envName := productInfo.ProductName, productInfo.Namespace, productInfo.EnvName
-
-	ret := &kube.ReleaseInstallParam{
-		ProductName:    productName,
-		Namespace:      namespace,
-		RenderChart:    renderChart,
-		ProdService:    productSvc,
-		IsChartInstall: renderChart.IsHelmChartDeploy,
-	}
-
-	if productSvc.FromZadig() {
-		opt := &commonrepo.ServiceFindOption{
-			ServiceName: productSvc.ServiceName,
-			Type:        productSvc.Type,
-			Revision:    productSvc.Revision,
-			ProductName: productName,
-		}
-		serviceObj, err := repository.QueryTemplateService(opt, productInfo.Production)
-		if err != nil {
-			log.Errorf("failed to find service %s, err %s", productSvc.ServiceName, err.Error())
-			return nil, nil
-		}
-		ret.ServiceObj = serviceObj
-		ret.ReleaseName = util.GeneReleaseName(serviceObj.GetReleaseNaming(), serviceObj.ProductName, namespace, envName, serviceObj.ServiceName)
-	} else {
-		serviceObj := &commonmodels.Service{
-			ServiceName: renderChart.ReleaseName,
-			ProductName: productName,
-			HelmChart: &commonmodels.HelmChart{
-				Name:    renderChart.ChartName,
-				Repo:    renderChart.ChartRepo,
-				Version: renderChart.ChartVersion,
-			},
-		}
-		ret.ServiceObj = serviceObj
-		ret.ReleaseName = renderChart.ReleaseName
-	}
-
-	mergedValues, err := commonutil.GeneHelmMergedValues(productSvc, defaultValues, renderChart)
-	if err != nil {
-		return ret, err
-	}
-
-	ret.MergedValues = mergedValues
-	ret.Production = productInfo.Production
-	return ret, nil
-}
-
 func installProductHelmCharts(user, requestID string, args *commonmodels.Product, _ *commonmodels.RenderSet, eventStart int64, helmClient *helmtool.HelmClient,
 	kclient client.Client, istioClient versionedclient.Interface, log *zap.SugaredLogger) {
 	var (
@@ -2809,7 +2786,7 @@ func installProductHelmCharts(user, requestID string, args *commonmodels.Product
 		}
 	}()
 
-	err = proceedHelmRelease(args, helmClient, nil, user, log)
+	err = kube.DeployMultiHelmRelease(args, helmClient, nil, user, log)
 	if err != nil {
 		log.Errorf("error occurred when installing services in env: %s/%s, err: %s ", args.ProductName, envName, err)
 		errList = multierror.Append(errList, err)
@@ -2841,44 +2818,8 @@ func getServiceRevisionMap(serviceRevisionList []*SvcRevision) map[string]*SvcRe
 	return serviceRevisionMap
 }
 
-func batchExecutorWithRetry(retryCount uint64, interval time.Duration, paramList []*kube.ReleaseInstallParam, handler intervalExecutorHandler, log *zap.SugaredLogger) []error {
-	bo := backoff.NewConstantBackOff(time.Second * 3)
-	retryBo := backoff.WithMaxRetries(bo, retryCount)
-	errList := make([]error, 0)
-	isRetry := false
-	_ = backoff.Retry(func() error {
-		failedParams := make([]*kube.ReleaseInstallParam, 0)
-		errList = batchExecutor(interval, paramList, &failedParams, isRetry, handler, log)
-		if len(errList) == 0 {
-			return nil
-		}
-		log.Infof("%d services waiting to retry", len(failedParams))
-		paramList = failedParams
-		isRetry = true
-		return fmt.Errorf("%d services apply failed", len(errList))
-	}, retryBo)
-	return errList
-}
-
-func batchExecutor(interval time.Duration, serviceList []*kube.ReleaseInstallParam, failedParams *[]*kube.ReleaseInstallParam, isRetry bool, handler intervalExecutorHandler, log *zap.SugaredLogger) []error {
-	if len(serviceList) == 0 {
-		return nil
-	}
-	errList := make([]error, 0)
-	for _, data := range serviceList {
-		err := handler(data, isRetry, log)
-		if err != nil {
-			errList = append(errList, err)
-			*failedParams = append(*failedParams, data)
-			log.Errorf("service:%s apply failed, err %s", data.ServiceObj.ServiceName, err)
-		}
-		time.Sleep(interval)
-	}
-	return errList
-}
-
 func updateHelmProductGroup(username, productName, envName string, productResp *commonmodels.Product,
-	overrideCharts []*commonservice.HelmSvcRenderArg, deletedSvcRevision map[string]int64, addedReleaseNameSet sets.String, filter svcUpgradeFilter, log *zap.SugaredLogger) error {
+	overrideCharts []*commonservice.HelmSvcRenderArg, deletedSvcRevision map[string]int64, addedReleaseNameSet sets.String, filter kube.DeploySvcFilter, log *zap.SugaredLogger) error {
 
 	helmClient, err := helmtool.NewClientFromNamespace(productResp.ClusterID, productResp.Namespace)
 	if err != nil {
@@ -2920,7 +2861,14 @@ func updateHelmProductGroup(username, productName, envName string, productResp *
 		return err
 	}
 
-	err = proceedHelmRelease(productResp, helmClient, filter, username, log)
+	log.Debugf("before DeployMultiHelmRelease")
+	for _, svcGroup := range productResp.Services {
+		for _, svc := range svcGroup {
+			log.Debugf("service: %s, envValuesYaml: %s", svc.ServiceName, svc.GetServiceRender().GetOverrideYaml())
+		}
+	}
+
+	err = kube.DeployMultiHelmRelease(productResp, helmClient, filter, username, log)
 	if err != nil {
 		log.Errorf("error occurred when upgrading services in env: %s/%s, err: %s ", productName, envName, err)
 		return err
@@ -2930,7 +2878,7 @@ func updateHelmProductGroup(username, productName, envName string, productResp *
 }
 
 func updateHelmChartProductGroup(username, productName, envName string, productResp *commonmodels.Product,
-	overrideCharts []*commonservice.HelmSvcRenderArg, deletedSvcRevision map[string]int64, dupSvcNameSet sets.String, filter svcUpgradeFilter, log *zap.SugaredLogger) error {
+	overrideCharts []*commonservice.HelmSvcRenderArg, deletedSvcRevision map[string]int64, dupSvcNameSet sets.String, filter kube.DeploySvcFilter, log *zap.SugaredLogger) error {
 
 	helmClient, err := helmtool.NewClientFromNamespace(productResp.ClusterID, productResp.Namespace)
 	if err != nil {
@@ -2972,7 +2920,7 @@ func updateHelmChartProductGroup(username, productName, envName string, productR
 		return err
 	}
 
-	err = proceedHelmRelease(productResp, helmClient, filter, username, log)
+	err = kube.DeployMultiHelmRelease(productResp, helmClient, filter, username, log)
 	if err != nil {
 		log.Errorf("error occurred when upgrading services in env: %s/%s, err: %s ", productName, envName, err)
 		return err
@@ -3025,10 +2973,10 @@ func diffRenderSet(username, productName, envName string, productResp *commonmod
 
 		productSvc := productResp.GetServiceMap()[serviceName]
 		if productSvc != nil {
-			renderChartArgMap[serviceName].FillRenderChartModel(productSvc.GetServiceRender(), productSvc.GetServiceRender().ChartVersion, latestChartInfo.ValuesYaml)
+			renderChartArgMap[serviceName].FillRenderChartModel(productSvc.GetServiceRender(), productSvc.GetServiceRender().ChartVersion)
 			newChartInfos = append(newChartInfos, productSvc.GetServiceRender())
 		} else {
-			renderChartArgMap[serviceName].FillRenderChartModel(latestChartInfo, latestChartInfo.ChartVersion, latestChartInfo.ValuesYaml)
+			renderChartArgMap[serviceName].FillRenderChartModel(latestChartInfo, latestChartInfo.ChartVersion)
 			newChartInfos = append(newChartInfos, latestChartInfo)
 		}
 	}
@@ -3072,121 +3020,6 @@ func mergeRenderSetAndRenderChart(productResp *commonmodels.Product, overrideCha
 		updatedGroups = append(updatedGroups, updatedGroup)
 	}
 	productResp.Services = updatedGroups
-}
-
-func findRenderChartFromList(svc *commonmodels.ProductService, renderCharts []*templatemodels.ServiceRender) *templatemodels.ServiceRender {
-	for _, rChart := range renderCharts {
-		if rChart.DeployedFromZadig() && svc.FromZadig() && rChart.ServiceName == svc.ServiceName {
-			return rChart
-		}
-		if !rChart.DeployedFromZadig() && !svc.FromZadig() && rChart.ReleaseName == svc.ReleaseName {
-			return rChart
-		}
-	}
-	return nil
-}
-
-// @todo merge with UpgradeHelmRelease
-func proceedHelmRelease(productResp *commonmodels.Product, helmClient *helmtool.HelmClient, filter svcUpgradeFilter, user string, log *zap.SugaredLogger) error {
-	productName, envName := productResp.ProductName, productResp.EnvName
-
-	session := mongotool.Session()
-	defer session.EndSession(context.TODO())
-
-	err := mongotool.StartTransaction(session)
-	if err != nil {
-		return err
-	}
-
-	handler := func(param *kube.ReleaseInstallParam, isRetry bool, log *zap.SugaredLogger) (err error) {
-		defer func() {
-			if param.ProdService != nil {
-				if err != nil {
-					param.ProdService.Error = err.Error()
-				} else {
-					err = commonutil.CreateEnvServiceVersion(productResp, param.ProdService, user, session, log)
-					if err != nil {
-						log.Errorf("failed to create service version, err: %v", err)
-					}
-
-					param.ProdService.Error = ""
-				}
-			}
-		}()
-
-		if !param.ProdService.FromZadig() {
-			chartRepo, err := commonrepo.NewHelmRepoColl().Find(&commonrepo.HelmRepoFindOption{RepoName: param.RenderChart.ChartRepo})
-			if err != nil {
-				return fmt.Errorf("failed to query chart-repo info, productName: %s, repoName: %s", productResp.ProductName, param.RenderChart.ChartRepo)
-			}
-
-			chartRef := fmt.Sprintf("%s/%s", param.RenderChart.ChartRepo, param.RenderChart.ChartName)
-			localPath := config.LocalServicePathWithRevision(param.ProductName, param.ReleaseName, param.RenderChart.ChartVersion, param.Production)
-			// remove local file to untar
-			_ = os.RemoveAll(localPath)
-
-			hClient, err := commonutil.NewHelmClient(chartRepo)
-			if err != nil {
-				return err
-			}
-
-			err = hClient.DownloadChart(commonutil.GeneHelmRepo(chartRepo), chartRef, param.RenderChart.ChartVersion, localPath, true)
-			if err != nil {
-				return fmt.Errorf("failed to download chart, chartName: %s, chartRepo: %+v, err: %s", param.RenderChart.ChartName, chartRepo.RepoName, err)
-			}
-		}
-
-		errInstall := kube.InstallOrUpgradeHelmChartWithValues(param, isRetry, helmClient)
-		if errInstall != nil {
-			log.Errorf("failed to upgrade service: %s, namespace: %s, isRetry: %v, err: %s", param.ServiceObj.ServiceName, productResp.Namespace, isRetry, errInstall)
-			err = fmt.Errorf("failed to upgrade service %s, err: %s", param.ServiceObj.ServiceName, errInstall)
-		}
-		return
-	}
-
-	productResp.LintServices()
-	errList := new(multierror.Error)
-	for groupIndex, groupServices := range productResp.Services {
-		installParamList := make([]*kube.ReleaseInstallParam, 0)
-		for _, prodSvc := range groupServices {
-			chartInfo := findRenderChartFromList(prodSvc, productResp.ServiceRenders)
-			if chartInfo == nil {
-				continue
-			}
-			if filter != nil && !filter(prodSvc) {
-				continue
-			}
-			if !commonutil.ChartDeployed(chartInfo, productResp.ServiceDeployStrategy) {
-				continue
-			}
-
-			param, err := buildInstallParam(productResp.DefaultValues, productResp, chartInfo, prodSvc)
-			if err != nil {
-				log.Errorf("failed to generate install param, service: %s, namespace: %s, err: %s", prodSvc.ServiceName, productResp.Namespace, err)
-				mongotool.AbortTransaction(session)
-				return err
-			}
-			prodSvc.Render = chartInfo
-			installParamList = append(installParamList, param)
-			prodSvc.UpdateTime = time.Now().Unix()
-		}
-		groupServiceErr := batchExecutorWithRetry(3, time.Millisecond*500, installParamList, handler, log)
-		if groupServiceErr != nil {
-			errList = multierror.Append(errList, groupServiceErr...)
-		}
-
-		err := helmservice.UpdateServicesGroupInEnv(productName, envName, groupIndex, groupServices, productResp.Production)
-		if err != nil {
-			log.Errorf("failed to UpdateHelmProductServices %s/%s, error: %v", productName, envName, err)
-			mongotool.AbortTransaction(session)
-			return err
-		}
-	}
-	err = mongotool.CommitTransaction(session)
-	if err != nil {
-		return err
-	}
-	return errList.ErrorOrNil()
 }
 
 func GetGlobalVariableCandidate(productName, envName string, log *zap.SugaredLogger) ([]*commontypes.ServiceVariableKV, error) {

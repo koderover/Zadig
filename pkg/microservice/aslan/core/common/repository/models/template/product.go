@@ -129,6 +129,7 @@ type CustomYaml struct {
 	RenderVariableKVs []*commontypes.RenderVariableKV `bson:"render_variable_kvs"               json:"render_variable_kvs"`
 	Source            string                          `bson:"source"                            json:"source"`
 	AutoSync          bool                            `bson:"auto_sync"                         json:"auto_sync"`
+	AutoSyncYaml      string                          `bson:"auto_sync_yaml"                    json:"auto_sync_yaml"`
 	SourceDetail      interface{}                     `bson:"source_detail"                     json:"source_detail"`
 	SourceID          string                          `bson:"source_id"                         json:"source_id"`
 }
@@ -143,7 +144,7 @@ type ServiceRender struct {
 	ChartRepo      string `bson:"chart_repo,omitempty"   json:"chart_repo,omitempty"`
 	ChartName      string `bson:"chart_name,omitempty"   json:"chart_name,omitempty"`
 	ChartVersion   string `bson:"chart_version,omitempty"   json:"chart_version,omitempty"`
-	ValuesYaml     string `bson:"values_yaml,omitempty"     json:"values_yaml,omitempty"`       // full helm service values yaml, only record, not actually used in calculation
+	// ValuesYaml     string `bson:"values_yaml,omitempty"     json:"values_yaml,omitempty"`       // full helm service values yaml, only record, not actually used in calculation
 	OverrideValues string `bson:"override_values,omitempty"   json:"override_values,omitempty"` // used for helm services, json-encoded string of kv value
 	// ---- for helm services end ----
 
@@ -318,11 +319,39 @@ func (r *RenderKV) RemoveDupServices() {
 	r.Services = result
 }
 
+func (rc *ServiceRender) GetAutoSync() bool {
+	if rc.OverrideYaml == nil {
+		return false
+	}
+	return rc.OverrideYaml.AutoSync
+}
+
+func (rc *ServiceRender) GetAutoSyncYaml() string {
+	if rc.OverrideYaml == nil {
+		return ""
+	}
+	return rc.OverrideYaml.AutoSyncYaml
+}
+
+func (rc *ServiceRender) SetAutoSyncYaml(yaml string) {
+	if rc.OverrideYaml == nil {
+		rc.OverrideYaml = &CustomYaml{}
+	}
+	rc.OverrideYaml.AutoSyncYaml = yaml
+}
+
 func (rc *ServiceRender) GetOverrideYaml() string {
 	if rc.OverrideYaml == nil {
 		return ""
 	}
 	return rc.OverrideYaml.YamlContent
+}
+
+func (rc *ServiceRender) SetOverrideYaml(Yaml string) {
+	if rc.OverrideYaml == nil {
+		rc.OverrideYaml = &CustomYaml{}
+	}
+	rc.OverrideYaml.YamlContent = Yaml
 }
 
 type KV struct {

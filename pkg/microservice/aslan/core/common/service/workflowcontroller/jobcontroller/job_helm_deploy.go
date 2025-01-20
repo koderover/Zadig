@@ -31,10 +31,9 @@ import (
 	"github.com/koderover/zadig/v2/pkg/microservice/aslan/config"
 	commonmodels "github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/repository/models"
 	commonrepo "github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/repository/mongodb"
+	helmservice "github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/service/helm"
 	"github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/service/kube"
-	"github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/service/repository"
 	"github.com/koderover/zadig/v2/pkg/setting"
-	"github.com/koderover/zadig/v2/pkg/tool/log"
 	"github.com/koderover/zadig/v2/pkg/types/job"
 )
 
@@ -99,110 +98,63 @@ func (c *HelmDeployJobCtl) Run(ctx context.Context) {
 		updateServiceRevision = true
 	}
 
-	images := make([]string, 0)
-	containers := make([]*commonmodels.Container, 0)
-	if slices.Contains(c.jobTaskSpec.DeployContents, config.DeployImage) {
-		for _, svcAndContainer := range c.jobTaskSpec.ImageAndModules {
-			images = append(images, svcAndContainer.Image)
-			containers = append(containers, &commonmodels.Container{
-				Name:      svcAndContainer.ServiceModule,
-				ImageName: svcAndContainer.ServiceModule,
-				Image:     svcAndContainer.Image,
-			})
-		}
-	}
-
-	param := &kube.ResourceApplyParam{
-		ProductInfo:           productInfo,
-		ServiceName:           c.jobTaskSpec.ServiceName,
-		Images:                images,
-		Uninstall:             false,
-		UpdateServiceRevision: updateServiceRevision,
-		Timeout:               c.timeout(),
-	}
-
-	curProdSvcRevision := func() int64 {
-		if productInfo.GetServiceMap()[c.jobTaskSpec.ServiceName] != nil {
-			return productInfo.GetServiceMap()[c.jobTaskSpec.ServiceName].Revision
-		}
-		return 0
-	}()
-
-	productService, svcTemplate, err := kube.PrepareHelmServiceData(param)
+	helmDeploySvc := helmservice.NewHelmDeployService()
+	newEnvService, tmplSvc, err := helmDeploySvc.GenNewEnvService(productInfo, c.jobTaskSpec.ServiceName, updateServiceRevision)
 	if err != nil {
-		msg := fmt.Sprintf("prepare helm service data error: %v", err)
+		msg := fmt.Sprintf("failed to generate new env service, error: %v", err)
 		logError(c.job, msg, c.logger)
 		return
 	}
 
-	if updateServiceRevision && curProdSvcRevision > int64(0) {
-		svcFindOption := &commonrepo.ServiceFindOption{
-			ProductName: productInfo.ProductName,
-			ServiceName: c.jobTaskSpec.ServiceName,
-		}
-		latestSvc, err := repository.QueryTemplateService(svcFindOption, productInfo.Production)
-		if err != nil {
-			msg := fmt.Sprintf("failed to find service %s/%d in product %s, error: %v", productInfo.ProductName, svcFindOption.Revision, productInfo.ProductName, err)
-			logError(c.job, msg, c.logger)
-			return
-		}
-
-		curUsedSvc, err := repository.QueryTemplateService(&commonrepo.ServiceFindOption{
-			ProductName: productInfo.ProductName,
-			ServiceName: c.jobTaskSpec.ServiceName,
-			Revision:    curProdSvcRevision,
-		}, productInfo.Production)
-		if err != nil {
-			msg := fmt.Sprintf("failed to find service %s/%d in product %s, error: %v", productInfo.ProductName, productService.Revision, productInfo.ProductName, err)
-			logError(c.job, msg, c.logger)
-			return
-		}
-
-		calculatedContainers := kube.CalculateContainer(productService, curUsedSvc, latestSvc.Containers, productInfo)
-		param.Images = kube.MergeImages(calculatedContainers, param.Images)
-	}
-
-	chartInfo := productService.GetServiceRender()
-
-	variableYaml := ""
-	// variable yaml from workflow task
-	if slices.Contains(c.jobTaskSpec.DeployContents, config.DeployVars) {
-		variableYaml = c.jobTaskSpec.VariableYaml
-	} else {
-		// variable yaml from env config
-		variableYaml = chartInfo.OverrideYaml.YamlContent
-	}
-
-	param.VariableYaml = variableYaml
-	chartInfo.OverrideYaml.YamlContent = param.VariableYaml
-
-	// this function is just to make sure a values.yaml can be generated without error
-	mergedValues, err := kube.GeneMergedValues(productService, productService.GetServiceRender(), productInfo.DefaultValues, param.Images, false)
-	if err != nil {
-		log.Errorf("failed to generate merged values.yaml, err: %w", err)
-		logError(c.job, fmt.Sprintf("fail to generate merged values.yaml, err: %s", err.Error()), c.logger)
-		return
-	}
-
-	c.jobTaskSpec.YamlContent = mergedValues
-	c.jobTaskSpec.UserSuppliedValue = c.jobTaskSpec.VariableYaml
-
 	if slices.Contains(c.jobTaskSpec.DeployContents, config.DeployConfig) {
-		productService.DeployStrategy = setting.ServiceDeployStrategyDeploy
+		newEnvService.DeployStrategy = setting.ServiceDeployStrategyDeploy
 	}
+
+	finalValuesYaml := ""
+	if len(c.jobTaskSpec.DeployContents) == 1 && slices.Contains(c.jobTaskSpec.DeployContents, config.DeployImage) {
+		finalValuesYaml, err = helmDeploySvc.NewGeneMergedValues(newEnvService, productInfo.DefaultValues, c.jobTaskSpec.GetDeployImages())
+		if err != nil {
+			msg := fmt.Sprintf("failed to generate merged values yaml, err: %s", err)
+			logError(c.job, msg, c.logger)
+			return
+		}
+	} else if len(c.jobTaskSpec.DeployContents) == 1 && slices.Contains(c.jobTaskSpec.DeployContents, config.DeployConfig) {
+		// only deploy config
+		finalValuesYaml, err = helmDeploySvc.NewGeneMergedValues(newEnvService, productInfo.DefaultValues, nil)
+		if err != nil {
+			msg := fmt.Sprintf("failed to generate merged values yaml, err: %s", err)
+			logError(c.job, msg, c.logger)
+			return
+		}
+	} else {
+		images := []string{}
+		if c.jobTaskSpec.Source == config.SourceFromJob {
+			images = c.jobTaskSpec.GetDeployImages()
+		}
+
+		newEnvService.GetServiceRender().SetOverrideYaml(c.jobTaskSpec.VariableYaml)
+		finalValuesYaml, err = helmDeploySvc.NewGeneMergedValues(newEnvService, productInfo.DefaultValues, images)
+		if err != nil {
+			msg := fmt.Sprintf("failed to generate merged values yaml, err: %s", err)
+			logError(c.job, msg, c.logger)
+			return
+		}
+	}
+
+	c.jobTaskSpec.YamlContent = finalValuesYaml
+	c.jobTaskSpec.UserSuppliedValue = newEnvService.GetServiceRender().GetOverrideYaml()
 
 	c.ack()
 
-	c.logger.Infof("start helm deploy, productName %s serviceName %s namespace %s, images %v variableYaml %s overrideValues: %s updateServiceRevision %v",
-		c.workflowCtx.ProjectName, c.jobTaskSpec.ServiceName, c.namespace, images, variableYaml, chartInfo.OverrideValues, updateServiceRevision)
+	c.logger.Infof("start helm deploy, productName %s serviceName %s namespace %s, values %s, overrideKVs: %s updateServiceRevision %v",
+		c.workflowCtx.ProjectName, c.jobTaskSpec.ServiceName, c.namespace, finalValuesYaml, newEnvService.GetServiceRender().OverrideValues, updateServiceRevision)
 
 	timeOut := c.timeout()
 
 	done := make(chan bool)
 	go func(chan bool) {
-		if err = kube.UpgradeHelmRelease(productInfo, productService, svcTemplate, param.Images, param.Timeout, c.workflowCtx.WorkflowTaskCreatorUsername); err != nil {
-			err = errors.WithMessagef(
-				err,
+		if err = kube.DeploySingleHelmRelease(productInfo, newEnvService, tmplSvc, nil, c.jobTaskSpec.Timeout, c.workflowCtx.WorkflowTaskCreatorUsername); err != nil {
+			err = errors.WithMessagef(err,
 				"failed to upgrade helm chart %s/%s",
 				c.namespace, c.jobTaskSpec.ServiceName)
 			done <- false

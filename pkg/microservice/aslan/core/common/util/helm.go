@@ -30,7 +30,6 @@ import (
 
 	"github.com/koderover/zadig/v2/pkg/microservice/aslan/config"
 	commonmodels "github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/repository/models"
-	templatemodels "github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/repository/models/template"
 	commonrepo "github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/repository/mongodb"
 	"github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/service/command"
 	fsservice "github.com/koderover/zadig/v2/pkg/microservice/aslan/core/common/service/fs"
@@ -348,35 +347,35 @@ func GetValidMatchData(spec *commonmodels.ImagePathSpec) map[string]string {
 
 // @note can be deprecated or not?
 // may duplicate with kube.GeneMergedValues
-func GeneHelmMergedValues(productSvc *commonmodels.ProductService, defaultValues string, renderChart *templatemodels.ServiceRender) (string, error) {
-	imageKVS := make([]*helmtool.KV, 0)
-	if productSvc != nil {
-		targetContainers := productSvc.Containers
-		replaceValuesMaps := make([]map[string]interface{}, 0)
-		for _, targetContainer := range targetContainers {
-			replaceValuesMap, err := AssignImageData(targetContainer.Image, GetValidMatchData(targetContainer.ImagePath))
-			if err != nil {
-				return "", fmt.Errorf("failed to pase image uri %s/%s, err %s", productSvc.ProductName, productSvc.ServiceName, err.Error())
-			}
-			replaceValuesMaps = append(replaceValuesMaps, replaceValuesMap)
-		}
+// func GeneHelmMergedValues(productSvc *commonmodels.ProductService, defaultValues string, renderChart *templatemodels.ServiceRender) (string, error) {
+// 	imageKVS := make([]*helmtool.KV, 0)
+// 	if productSvc != nil {
+// 		targetContainers := productSvc.Containers
+// 		replaceValuesMaps := make([]map[string]interface{}, 0)
+// 		for _, targetContainer := range targetContainers {
+// 			replaceValuesMap, err := AssignImageData(targetContainer.Image, GetValidMatchData(targetContainer.ImagePath))
+// 			if err != nil {
+// 				return "", fmt.Errorf("failed to pase image uri %s/%s, err %s", productSvc.ProductName, productSvc.ServiceName, err.Error())
+// 			}
+// 			replaceValuesMaps = append(replaceValuesMaps, replaceValuesMap)
+// 		}
 
-		for _, imageSecs := range replaceValuesMaps {
-			for key, value := range imageSecs {
-				imageKVS = append(imageKVS, &helmtool.KV{
-					Key:   key,
-					Value: value,
-				})
-			}
-		}
-	}
+// 		for _, imageSecs := range replaceValuesMaps {
+// 			for key, value := range imageSecs {
+// 				imageKVS = append(imageKVS, &helmtool.KV{
+// 					Key:   key,
+// 					Value: value,
+// 				})
+// 			}
+// 		}
+// 	}
 
-	mergedValues, err := helmtool.MergeOverrideValues("", defaultValues, renderChart.GetOverrideYaml(), renderChart.OverrideValues, imageKVS)
-	if err != nil {
-		return "", fmt.Errorf("failed to merge override yaml %s and values %s, err: %s", renderChart.GetOverrideYaml(), renderChart.OverrideValues, err)
-	}
-	return mergedValues, nil
-}
+// 	mergedValues, err := helmtool.MergeOverrideValues("", defaultValues, renderChart.GetOverrideYaml(), renderChart.OverrideValues, imageKVS)
+// 	if err != nil {
+// 		return "", fmt.Errorf("failed to merge override yaml %s and values %s, err: %s", renderChart.GetOverrideYaml(), renderChart.OverrideValues, err)
+// 	}
+// 	return mergedValues, nil
+// }
 
 func NewHelmClient(chartRepo *commonmodels.HelmRepo) (*helmtool.HelmClient, error) {
 	client, err := helmtool.NewClient()

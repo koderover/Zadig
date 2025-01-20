@@ -1115,7 +1115,7 @@ func CreateOrUpdateHelmServiceFromGitRepo(projectName string, args *HelmServiceC
 			helmRenderCharts = append(helmRenderCharts, &templatemodels.ServiceRender{
 				ServiceName:  serviceName,
 				ChartVersion: svc.HelmChart.Version,
-				ValuesYaml:   svc.HelmChart.ValuesYaml,
+				// ValuesYaml:   svc.HelmChart.ValuesYaml,
 			})
 		})
 	}
@@ -1334,7 +1334,7 @@ func handleSingleService(projectName string, repoConfig *commonservice.RepoConfi
 	return &templatemodels.ServiceRender{
 		ServiceName:  serviceName,
 		ChartVersion: templateChartData.ChartVersion,
-		ValuesYaml:   string(mergedValues),
+		// ValuesYaml:   string(mergedValues),
 	}, svc, nil
 }
 

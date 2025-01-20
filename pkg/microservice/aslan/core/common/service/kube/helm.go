@@ -25,7 +25,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
+	"github.com/hashicorp/go-multierror"
 	"github.com/koderover/zadig/v2/pkg/tool/clientmanager"
+	mongotool "github.com/koderover/zadig/v2/pkg/tool/mongo"
 	helmclient "github.com/mittwald/go-helm-client"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -55,6 +58,9 @@ import (
 	"github.com/koderover/zadig/v2/pkg/util"
 	"github.com/koderover/zadig/v2/pkg/util/fs"
 )
+
+type IntervalExecutorHandler func(data *ReleaseInstallParam, isRetry bool, log *zap.SugaredLogger) error
+type DeploySvcFilter func(svc *commonmodels.ProductService) bool
 
 type ReleaseInstallParam struct {
 	ProductName    string
@@ -140,194 +146,6 @@ func InstallOrUpgradeHelmChartWithValues(param *ReleaseInstallParam, isRetry boo
 		}
 	}
 
-	return err
-}
-
-// GeneMergedValues generate values.yaml used to install or upgrade helm chart, like param in after option -f
-// productSvc: contains current images info
-// svcRender: contains env values info, including service's values and env's override values
-// defaultValues: global values yaml
-// images: images to be replaced
-// fullValues: If fullValues is set to true, full values yaml content will be returned, this case is used to preview values when running workflows
-func GeneMergedValues(productSvc *commonmodels.ProductService, svcRender *templatemodels.ServiceRender, defaultValues string, images []string, fullValues bool) (string, error) {
-	serviceName := productSvc.ServiceName
-	var targetContainers []*commonmodels.Container
-
-	imageMap := make(map[string]string)
-	for _, image := range images {
-		imageMap[commonutil.ExtractImageName(image)] = image
-	}
-
-	for _, container := range productSvc.Containers {
-		overrideImage, ok := imageMap[container.ImageName]
-		if ok {
-			container.Image = overrideImage
-		}
-		targetContainers = append(targetContainers, container)
-	}
-
-	targetChart := svcRender
-
-	imageValuesMaps := make([]map[string]interface{}, 0)
-	for _, targetContainer := range targetContainers {
-		// prepare image replace info
-		replaceValuesMap, err := commonutil.AssignImageData(targetContainer.Image, commonutil.GetValidMatchData(targetContainer.ImagePath))
-		if err != nil {
-			return "", fmt.Errorf("failed to pase image uri %s/%s, err %s", productSvc.ProductName, serviceName, err.Error())
-		}
-		imageValuesMaps = append(imageValuesMaps, replaceValuesMap)
-	}
-
-	imageKVS := make([]*helmtool.KV, 0)
-	for _, imageSecs := range imageValuesMaps {
-		for key, value := range imageSecs {
-			imageKVS = append(imageKVS, &helmtool.KV{
-				Key:   key,
-				Value: value,
-			})
-		}
-	}
-
-	// replace image into service's values.yaml
-	replacedValuesYaml, err := commonutil.ReplaceImage(targetChart.ValuesYaml, imageValuesMaps...)
-	if err != nil {
-		return "", fmt.Errorf("failed to replace image uri %s/%s, err %s", productSvc.ProductName, serviceName, err.Error())
-
-	}
-	if replacedValuesYaml == "" {
-		return "", fmt.Errorf("failed to set new image uri into service's values.yaml %s/%s", productSvc.ProductName, serviceName)
-	}
-
-	// update values.yaml content in chart
-	targetChart.ValuesYaml = replacedValuesYaml
-
-	baseValuesYaml := ""
-	if fullValues {
-		baseValuesYaml = targetChart.ValuesYaml
-	}
-
-	// merge override values and kvs into service's yaml
-	mergedValuesYaml, err := helmtool.MergeOverrideValues(baseValuesYaml, defaultValues, targetChart.GetOverrideYaml(), targetChart.OverrideValues, imageKVS)
-	if err != nil {
-		return "", fmt.Errorf("failed to merge override values, err: %s", err)
-	}
-	return mergedValuesYaml, nil
-}
-
-// @todo merge with proceedHelmRelease
-// UpgradeHelmRelease upgrades helm release with some specific images
-func UpgradeHelmRelease(product *commonmodels.Product, productSvc *commonmodels.ProductService,
-	svcTemp *commonmodels.Service, images []string, timeout int, user string) error {
-	chartInfo := productSvc.GetServiceRender()
-
-	var (
-		err                      error
-		releaseName              string
-		replacedMergedValuesYaml string
-	)
-
-	releaseName = productSvc.ReleaseName
-	if productSvc.FromZadig() {
-		releaseName = util.GeneReleaseName(svcTemp.GetReleaseNaming(), svcTemp.ProductName, product.Namespace, product.EnvName, svcTemp.ServiceName)
-	}
-
-	err = CheckReleaseInstalledByOtherEnv(sets.NewString(releaseName), product)
-	if err != nil {
-		return err
-	}
-
-	if productSvc.FromZadig() {
-		releaseName = util.GeneReleaseName(svcTemp.GetReleaseNaming(), svcTemp.ProductName, product.Namespace, product.EnvName, svcTemp.ServiceName)
-		replacedMergedValuesYaml, err = GeneMergedValues(productSvc, chartInfo, product.DefaultValues, images, false)
-		if err != nil {
-			return fmt.Errorf("failed to gene merged values, err: %s", err)
-		}
-	} else {
-		releaseName = productSvc.ReleaseName
-		svcTemp = &commonmodels.Service{
-			ServiceName: releaseName,
-			ProductName: product.ProductName,
-			HelmChart: &commonmodels.HelmChart{
-				Name:    chartInfo.ChartName,
-				Repo:    chartInfo.ChartRepo,
-				Version: chartInfo.ChartVersion,
-			},
-		}
-
-		replacedMergedValuesYaml, err = helmtool.MergeOverrideValues("", product.DefaultValues, chartInfo.GetOverrideYaml(), chartInfo.OverrideValues, nil)
-		if err != nil {
-			return fmt.Errorf("failed to merge override values, err: %s", err)
-		}
-
-		chartRepo, err := commonrepo.NewHelmRepoColl().Find(&commonrepo.HelmRepoFindOption{RepoName: chartInfo.ChartRepo})
-		if err != nil {
-			return fmt.Errorf("failed to query chart-repo info, productName: %s, repoName: %s", product.ProductName, chartInfo.ChartRepo)
-		}
-
-		chartRef := fmt.Sprintf("%s/%s", chartInfo.ChartRepo, chartInfo.ChartName)
-		localPath := config.LocalServicePathWithRevision(product.ProductName, releaseName, chartInfo.ChartVersion, product.Production)
-		// remove local file to untar
-		_ = os.RemoveAll(localPath)
-
-		hClient, err := commonutil.NewHelmClient(chartRepo)
-		if err != nil {
-			return err
-		}
-		err = hClient.DownloadChart(commonutil.GeneHelmRepo(chartRepo), chartRef, chartInfo.ChartVersion, localPath, true)
-		if err != nil {
-			return fmt.Errorf("failed to download chart, chartName: %s, chartRepo: %+v, err: %s", chartInfo.ChartName, chartRepo.RepoName, err)
-		}
-	}
-
-	helmClient, err := helmtool.NewClientFromNamespace(product.ClusterID, product.Namespace)
-	if err != nil {
-		return err
-	}
-
-	param := &ReleaseInstallParam{
-		ProductName:  svcTemp.ProductName,
-		Namespace:    product.Namespace,
-		ReleaseName:  releaseName,
-		MergedValues: replacedMergedValuesYaml,
-		RenderChart:  chartInfo,
-		ServiceObj:   svcTemp,
-		Timeout:      timeout,
-		Production:   product.Production,
-	}
-	if !productSvc.FromZadig() {
-		param.IsChartInstall = true
-	}
-
-	ensureUpgrade := func() error {
-		hrs, errHistory := helmClient.ListReleaseHistory(param.ReleaseName, 10)
-		if errHistory != nil {
-			// list history should not block deploy operation, error will be logged instead of returned
-			return nil
-		}
-		if len(hrs) == 0 {
-			return nil
-		}
-		releaseutil.Reverse(hrs, releaseutil.SortByRevision)
-		rel := hrs[0]
-
-		if rel.Info.Status.IsPending() {
-			return fmt.Errorf("failed to upgrade release: %s with exceptional status: %s", param.ReleaseName, rel.Info.Status)
-		}
-		return nil
-	}
-
-	err = ensureUpgrade()
-	if err != nil {
-		return err
-	}
-
-	// when replace image, should not wait
-	err = InstallOrUpgradeHelmChartWithValues(param, false, helmClient)
-	if err != nil {
-		return err
-	}
-
-	err = helmservice.UpdateServiceInEnv(product, productSvc, user)
 	return err
 }
 
@@ -720,4 +538,321 @@ func EnsureDeleteZadigServiceBySvcName(ctx context.Context, env *commonmodels.Pr
 		return EnsureDeleteGrayscaleService(ctx, env, svc, kclient, istioClient)
 	}
 	return nil
+}
+
+func DeploySingleHelmRelease(product *commonmodels.Product, productSvc *commonmodels.ProductService,
+	svcTemp *commonmodels.Service, images []string, timeout int, user string) error {
+	chartInfo := productSvc.GetServiceRender()
+
+	var (
+		err                      error
+		releaseName              string
+		replacedMergedValuesYaml string
+	)
+
+	releaseName = productSvc.ReleaseName
+	if productSvc.FromZadig() {
+		releaseName = util.GeneReleaseName(svcTemp.GetReleaseNaming(), svcTemp.ProductName, product.Namespace, product.EnvName, svcTemp.ServiceName)
+	}
+
+	err = CheckReleaseInstalledByOtherEnv(sets.NewString(releaseName), product)
+	if err != nil {
+		return err
+	}
+
+	if productSvc.FromZadig() {
+		releaseName = util.GeneReleaseName(svcTemp.GetReleaseNaming(), svcTemp.ProductName, product.Namespace, product.EnvName, svcTemp.ServiceName)
+		replacedMergedValuesYaml, err = helmservice.NewHelmDeployService().NewGeneMergedValues(productSvc, product.DefaultValues, images)
+		if err != nil {
+			return fmt.Errorf("failed to gene merged values, err: %s", err)
+		}
+	} else {
+		releaseName = productSvc.ReleaseName
+		svcTemp = &commonmodels.Service{
+			ServiceName: releaseName,
+			ProductName: product.ProductName,
+			HelmChart: &commonmodels.HelmChart{
+				Name:    chartInfo.ChartName,
+				Repo:    chartInfo.ChartRepo,
+				Version: chartInfo.ChartVersion,
+			},
+		}
+
+		replacedMergedValuesYaml, err = helmservice.NewHelmDeployService().NewGeneMergedValues(productSvc, product.DefaultValues, nil)
+		if err != nil {
+			return fmt.Errorf("failed to gene merged values, err: %s", err)
+		}
+
+		chartRepo, err := commonrepo.NewHelmRepoColl().Find(&commonrepo.HelmRepoFindOption{RepoName: chartInfo.ChartRepo})
+		if err != nil {
+			return fmt.Errorf("failed to query chart-repo info, productName: %s, repoName: %s", product.ProductName, chartInfo.ChartRepo)
+		}
+
+		chartRef := fmt.Sprintf("%s/%s", chartInfo.ChartRepo, chartInfo.ChartName)
+		localPath := config.LocalServicePathWithRevision(product.ProductName, releaseName, chartInfo.ChartVersion, product.Production)
+		// remove local file to untar
+		_ = os.RemoveAll(localPath)
+
+		hClient, err := commonutil.NewHelmClient(chartRepo)
+		if err != nil {
+			return err
+		}
+		err = hClient.DownloadChart(commonutil.GeneHelmRepo(chartRepo), chartRef, chartInfo.ChartVersion, localPath, true)
+		if err != nil {
+			return fmt.Errorf("failed to download chart, chartName: %s, chartRepo: %+v, err: %s", chartInfo.ChartName, chartRepo.RepoName, err)
+		}
+	}
+
+	helmClient, err := helmtool.NewClientFromNamespace(product.ClusterID, product.Namespace)
+	if err != nil {
+		return err
+	}
+
+	param := &ReleaseInstallParam{
+		ProductName:  svcTemp.ProductName,
+		Namespace:    product.Namespace,
+		ReleaseName:  releaseName,
+		MergedValues: replacedMergedValuesYaml,
+		RenderChart:  chartInfo,
+		ServiceObj:   svcTemp,
+		Timeout:      timeout,
+		Production:   product.Production,
+	}
+	if !productSvc.FromZadig() {
+		param.IsChartInstall = true
+	}
+
+	ensureUpgrade := func() error {
+		hrs, errHistory := helmClient.ListReleaseHistory(param.ReleaseName, 10)
+		if errHistory != nil {
+			// list history should not block deploy operation, error will be logged instead of returned
+			return nil
+		}
+		if len(hrs) == 0 {
+			return nil
+		}
+		releaseutil.Reverse(hrs, releaseutil.SortByRevision)
+		rel := hrs[0]
+
+		if rel.Info.Status.IsPending() {
+			return fmt.Errorf("failed to upgrade release: %s with exceptional status: %s", param.ReleaseName, rel.Info.Status)
+		}
+		return nil
+	}
+
+	err = ensureUpgrade()
+	if err != nil {
+		return err
+	}
+
+	// when replace image, should not wait
+	err = InstallOrUpgradeHelmChartWithValues(param, false, helmClient)
+	if err != nil {
+		return err
+	}
+
+	err = helmservice.UpdateServiceInEnv(product, productSvc, user)
+	return err
+}
+
+func DeployMultiHelmRelease(productResp *commonmodels.Product, helmClient *helmtool.HelmClient, filter DeploySvcFilter, user string, log *zap.SugaredLogger) error {
+	productName, envName := productResp.ProductName, productResp.EnvName
+
+	session := mongotool.Session()
+	defer session.EndSession(context.TODO())
+
+	err := mongotool.StartTransaction(session)
+	if err != nil {
+		return err
+	}
+
+	handler := func(param *ReleaseInstallParam, isRetry bool, log *zap.SugaredLogger) (err error) {
+		defer func() {
+			if param.ProdService != nil {
+				if err != nil {
+					param.ProdService.Error = err.Error()
+				} else {
+					err = commonutil.CreateEnvServiceVersion(productResp, param.ProdService, user, session, log)
+					if err != nil {
+						log.Errorf("failed to create service version, err: %v", err)
+					}
+
+					param.ProdService.Error = ""
+				}
+			}
+		}()
+
+		if !param.ProdService.FromZadig() {
+			chartRepo, err := commonrepo.NewHelmRepoColl().Find(&commonrepo.HelmRepoFindOption{RepoName: param.RenderChart.ChartRepo})
+			if err != nil {
+				return fmt.Errorf("failed to query chart-repo info, productName: %s, repoName: %s", productResp.ProductName, param.RenderChart.ChartRepo)
+			}
+
+			chartRef := fmt.Sprintf("%s/%s", param.RenderChart.ChartRepo, param.RenderChart.ChartName)
+			localPath := config.LocalServicePathWithRevision(param.ProductName, param.ReleaseName, param.RenderChart.ChartVersion, param.Production)
+			// remove local file to untar
+			_ = os.RemoveAll(localPath)
+
+			hClient, err := commonutil.NewHelmClient(chartRepo)
+			if err != nil {
+				return err
+			}
+
+			err = hClient.DownloadChart(commonutil.GeneHelmRepo(chartRepo), chartRef, param.RenderChart.ChartVersion, localPath, true)
+			if err != nil {
+				return fmt.Errorf("failed to download chart, chartName: %s, chartRepo: %+v, err: %s", param.RenderChart.ChartName, chartRepo.RepoName, err)
+			}
+		}
+
+		errInstall := InstallOrUpgradeHelmChartWithValues(param, isRetry, helmClient)
+		if errInstall != nil {
+			log.Errorf("failed to upgrade service: %s, namespace: %s, isRetry: %v, err: %s", param.ServiceObj.ServiceName, productResp.Namespace, isRetry, errInstall)
+			err = fmt.Errorf("failed to upgrade service %s, err: %s", param.ServiceObj.ServiceName, errInstall)
+		}
+		return
+	}
+
+	productResp.LintServices()
+	errList := new(multierror.Error)
+	for groupIndex, groupServices := range productResp.Services {
+		installParamList := make([]*ReleaseInstallParam, 0)
+		for _, prodSvc := range groupServices {
+			chartInfo := findRenderChartFromList(prodSvc, productResp.ServiceRenders)
+			if chartInfo == nil {
+				continue
+			}
+			if filter != nil && !filter(prodSvc) {
+				continue
+			}
+			if !commonutil.ChartDeployed(chartInfo, productResp.ServiceDeployStrategy) {
+				continue
+			}
+
+			param, err := BuildInstallParam(productResp.DefaultValues, productResp, chartInfo, prodSvc)
+			if err != nil {
+				log.Errorf("failed to generate install param, service: %s, namespace: %s, err: %s", prodSvc.ServiceName, productResp.Namespace, err)
+				mongotool.AbortTransaction(session)
+				return err
+			}
+			prodSvc.Render = chartInfo
+			prodSvc.UpdateTime = time.Now().Unix()
+			installParamList = append(installParamList, param)
+
+		}
+		groupServiceErr := BatchExecutorWithRetry(3, time.Millisecond*500, installParamList, handler, log)
+		if groupServiceErr != nil {
+			errList = multierror.Append(errList, groupServiceErr...)
+		}
+
+		err := helmservice.UpdateServicesGroupInEnv(productName, envName, groupIndex, groupServices, productResp.Production)
+		if err != nil {
+			log.Errorf("failed to UpdateHelmProductServices %s/%s, error: %v", productName, envName, err)
+			mongotool.AbortTransaction(session)
+			return err
+		}
+	}
+	err = mongotool.CommitTransaction(session)
+	if err != nil {
+		return err
+	}
+	return errList.ErrorOrNil()
+}
+
+func findRenderChartFromList(svc *commonmodels.ProductService, renderCharts []*templatemodels.ServiceRender) *templatemodels.ServiceRender {
+	for _, rChart := range renderCharts {
+		if rChart.DeployedFromZadig() && svc.FromZadig() && rChart.ServiceName == svc.ServiceName {
+			return rChart
+		}
+		if !rChart.DeployedFromZadig() && !svc.FromZadig() && rChart.ReleaseName == svc.ReleaseName {
+			return rChart
+		}
+	}
+	return nil
+}
+
+func BuildInstallParam(defaultValues string, productInfo *commonmodels.Product, renderChart *templatemodels.ServiceRender, productSvc *commonmodels.ProductService) (*ReleaseInstallParam, error) {
+	productName, namespace, envName := productInfo.ProductName, productInfo.Namespace, productInfo.EnvName
+	productSvc.Render = renderChart
+
+	ret := &ReleaseInstallParam{
+		ProductName:    productName,
+		Namespace:      namespace,
+		RenderChart:    renderChart,
+		ProdService:    productSvc,
+		IsChartInstall: renderChart.IsHelmChartDeploy,
+	}
+
+	if productSvc.FromZadig() {
+		opt := &commonrepo.ServiceFindOption{
+			ServiceName: productSvc.ServiceName,
+			Type:        productSvc.Type,
+			Revision:    productSvc.Revision,
+			ProductName: productName,
+		}
+		templateSvc, err := repository.QueryTemplateService(opt, productInfo.Production)
+		if err != nil {
+			log.Errorf("failed to find service %s, err %s", productSvc.ServiceName, err.Error())
+			return nil, nil
+		}
+		ret.ServiceObj = templateSvc
+		ret.ReleaseName = util.GeneReleaseName(templateSvc.GetReleaseNaming(), templateSvc.ProductName, namespace, envName, templateSvc.ServiceName)
+	} else {
+		serviceObj := &commonmodels.Service{
+			ServiceName: renderChart.ReleaseName,
+			ProductName: productName,
+			HelmChart: &commonmodels.HelmChart{
+				Name:    renderChart.ChartName,
+				Repo:    renderChart.ChartRepo,
+				Version: renderChart.ChartVersion,
+			},
+		}
+		ret.ServiceObj = serviceObj
+		ret.ReleaseName = renderChart.ReleaseName
+	}
+
+	helmDeploySvc := helmservice.NewHelmDeployService()
+	finalValues, err := helmDeploySvc.NewGeneMergedValues(productSvc, defaultValues, nil)
+	if err != nil {
+		return ret, err
+	}
+
+	ret.MergedValues = finalValues
+	ret.Production = productInfo.Production
+	return ret, nil
+}
+
+func BatchExecutorWithRetry(retryCount uint64, interval time.Duration, paramList []*ReleaseInstallParam, handler IntervalExecutorHandler, log *zap.SugaredLogger) []error {
+	bo := backoff.NewConstantBackOff(time.Second * 3)
+	retryBo := backoff.WithMaxRetries(bo, retryCount)
+	errList := make([]error, 0)
+	isRetry := false
+	_ = backoff.Retry(func() error {
+		failedParams := make([]*ReleaseInstallParam, 0)
+		errList = batchExecutor(interval, paramList, &failedParams, isRetry, handler, log)
+		if len(errList) == 0 {
+			return nil
+		}
+		log.Infof("%d services waiting to retry", len(failedParams))
+		paramList = failedParams
+		isRetry = true
+		return fmt.Errorf("%d services apply failed", len(errList))
+	}, retryBo)
+	return errList
+}
+
+func batchExecutor(interval time.Duration, serviceList []*ReleaseInstallParam, failedParams *[]*ReleaseInstallParam, isRetry bool, handler IntervalExecutorHandler, log *zap.SugaredLogger) []error {
+	if len(serviceList) == 0 {
+		return nil
+	}
+	errList := make([]error, 0)
+	for _, data := range serviceList {
+		err := handler(data, isRetry, log)
+		if err != nil {
+			errList = append(errList, err)
+			*failedParams = append(*failedParams, data)
+			log.Errorf("service:%s apply failed, err %s", data.ServiceObj.ServiceName, err)
+		}
+		time.Sleep(interval)
+	}
+	return errList
 }

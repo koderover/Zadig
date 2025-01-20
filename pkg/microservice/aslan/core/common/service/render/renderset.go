@@ -91,7 +91,7 @@ func GetLatestRenderSetFromHelmProject(productName string, isProduction bool) (*
 		chartInfo = append(chartInfo, &templatemodels.ServiceRender{
 			ServiceName:  service.ServiceName,
 			ChartVersion: service.HelmChart.Version,
-			ValuesYaml:   service.HelmChart.ValuesYaml,
+			// ValuesYaml:   service.HelmChart.ValuesYaml,
 		})
 	}
 

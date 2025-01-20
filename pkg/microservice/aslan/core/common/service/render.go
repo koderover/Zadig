@@ -143,10 +143,10 @@ func (args *HelmSvcRenderArg) fromCustomValueYaml(customValuesYaml *templatemode
 }
 
 // FillRenderChartModel fill render chart model
-func (args *HelmSvcRenderArg) FillRenderChartModel(chart *templatemodels.ServiceRender, version, valuesYaml string) {
+func (args *HelmSvcRenderArg) FillRenderChartModel(chart *templatemodels.ServiceRender, version string) {
 	chart.ServiceName = args.ServiceName
 	chart.ChartVersion = version
-	chart.ValuesYaml = valuesYaml
+	// chart.ValuesYaml = valuesYaml
 	chart.OverrideValues = args.ToOverrideValueString()
 	chart.OverrideYaml = args.toCustomValuesYaml()
 }
