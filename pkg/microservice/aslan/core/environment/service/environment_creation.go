@@ -59,7 +59,7 @@ func prepareHelmProductCreation(templateProduct *templatemodels.Product, product
 			return fmt.Errorf("failed to find chart info in product, serviceName: %s productName: %s", singleCV.ServiceName, templateProduct.ProjectName)
 		}
 		chartInfo := &templatemodels.ServiceRender{}
-		singleCV.FillRenderChartModel(chartInfo, tc.ChartVersion, tc.ValuesYaml)
+		singleCV.FillRenderChartModel(chartInfo, tc.ChartVersion)
 		cvMap[singleCV.ServiceName] = chartInfo
 		productObj.ServiceRenders = append(productObj.ServiceRenders, chartInfo)
 		serviceDeployStrategy[singleCV.ServiceName] = singleCV.DeployStrategy
@@ -85,7 +85,7 @@ func prepareHelmProductCreation(templateProduct *templatemodels.Product, product
 			if !ok {
 				return e.ErrCreateEnv.AddDesc(fmt.Sprintf("failed to find service info in template_service, serviceName: %s", serviceName))
 			}
-			rc.ValuesYaml = serviceTmpl.HelmChart.ValuesYaml
+			// rc.ValuesYaml = serviceTmpl.HelmChart.ValuesYaml
 
 			serviceResp := &commonmodels.ProductService{
 				ServiceName: serviceTmpl.ServiceName,
@@ -97,7 +97,7 @@ func prepareHelmProductCreation(templateProduct *templatemodels.Product, product
 			}
 			serviceResp.Containers = make([]*commonmodels.Container, 0)
 			for _, c := range serviceTmpl.Containers {
-				image, err := genImageFromYaml(c, rc.ValuesYaml, defaultValuesYaml, rc.GetOverrideYaml(), rc.OverrideValues)
+				image, err := genImageFromYaml(c, serviceTmpl.HelmChart.ValuesYaml, defaultValuesYaml, rc.GetOverrideYaml(), rc.OverrideValues)
 				if err != nil {
 					errMsg := fmt.Sprintf("genImageFromYaml product template %s,service name:%s,error:%s", productObj.ProductName, rc.ServiceName, err)
 					log.Error(errMsg)

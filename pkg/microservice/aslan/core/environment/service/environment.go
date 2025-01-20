@@ -1076,7 +1076,7 @@ func updateHelmProduct(productName, envName, username, requestID string, overrid
 
 				if svr.Render == nil {
 					svr.GetServiceRender().ChartVersion = templateSvcMap[svr.ServiceName].HelmChart.Version
-					svr.GetServiceRender().ValuesYaml = templateSvcMap[svr.ServiceName].HelmChart.ValuesYaml
+					// svr.GetServiceRender().ValuesYaml = templateSvcMap[svr.ServiceName].HelmChart.ValuesYaml
 				}
 				svr.ReleaseName = releaseName
 			}
@@ -1317,8 +1317,8 @@ func updateHelmChartProduct(productName, envName, username, requestID string, ov
 	return nil
 }
 
-func genImageFromYaml(c *commonmodels.Container, valuesYaml, defaultValues, overrideYaml, overrideValues string) (string, error) {
-	mergeYaml, err := helmtool.MergeOverrideValues(valuesYaml, defaultValues, overrideYaml, overrideValues, nil)
+func genImageFromYaml(c *commonmodels.Container, serviceValuesYaml, defaultValues, overrideYaml, overrideValues string) (string, error) {
+	mergeYaml, err := helmtool.MergeOverrideValues(serviceValuesYaml, defaultValues, overrideYaml, overrideValues, nil)
 	if err != nil {
 		return "", err
 	}
@@ -1338,6 +1338,34 @@ func genImageFromYaml(c *commonmodels.Container, valuesYaml, defaultValues, over
 	}
 	return image, nil
 }
+
+// func genImageFromYaml2(prodSvc *commonmodels.ProductService, c *commonmodels.Container, valuesYaml, defaultValues string) (string, error) {
+// 	helmDeploySvc := helmservice.NewHelmDeployService()
+// 	// newEnvSvc, tmplSvc, err := helmDeploySvc.GenNewEnvService(env, serviceName, true)
+// 	// if err != nil {
+// 	// 	return "", fmt.Errorf("failed to generate new env service, error: %v", err)
+// 	// }
+// 	mergedValues, err := helmDeploySvc.NewGeneMergedValues(prodSvc, defaultValues, nil)
+// 	if err != nil {
+// 		return "", fmt.Errorf("failed to generate merged values, error: %v", err)
+// 	}
+// 	helmDeploySvc.GeneFullValues()
+// 	mergedValuesYamlFlattenMap, err := converter.YamlToFlatMap([]byte(mergeYaml))
+// 	if err != nil {
+// 		return "", err
+// 	}
+// 	imageRule := templatemodels.ImageSearchingRule{
+// 		Repo:      c.ImagePath.Repo,
+// 		Namespace: c.ImagePath.Namespace,
+// 		Image:     c.ImagePath.Image,
+// 		Tag:       c.ImagePath.Tag,
+// 	}
+// 	image, err := commonutil.GeneImageURI(imageRule.GetSearchingPattern(), mergedValuesYamlFlattenMap)
+// 	if err != nil {
+// 		return "", err
+// 	}
+// 	return image, nil
+// }
 
 func prepareEstimateDataForEnvCreation(productName, serviceName string, production bool, isHelmChartDeploy bool, log *zap.SugaredLogger) (*commonmodels.ProductService, *commonmodels.Service, error) {
 	if isHelmChartDeploy {
@@ -1375,7 +1403,7 @@ func prepareEstimateDataForEnvCreation(productName, serviceName string, producti
 			Render: &templatemodels.ServiceRender{
 				ServiceName:  serviceName,
 				OverrideYaml: &templatemodels.CustomYaml{},
-				ValuesYaml:   templateService.HelmChart.ValuesYaml,
+				// ValuesYaml:   templateService.HelmChart.ValuesYaml,
 			},
 		}
 
@@ -1449,7 +1477,7 @@ func prepareEstimateDataForEnvUpdate(productName, envName, serviceOrReleaseName,
 				OverrideYaml: &templatemodels.CustomYaml{},
 			}
 		}
-		prodSvc.Render.ValuesYaml = templateService.HelmChart.ValuesYaml
+		// prodSvc.Render.ValuesYaml = templateService.HelmChart.ValuesYaml
 		prodSvc.Render.ChartVersion = templateService.HelmChart.Version
 	}
 
@@ -1722,7 +1750,7 @@ func UpdateHelmProductCharts(productName, envName, userName, requestID string, p
 				return e.ErrUpdateEnv.AddDesc(fmt.Sprintf("failed to find current chart values for service: %s", serviceName))
 			}
 
-			arg.FillRenderChartModel(rcValues, rcValues.ChartVersion, rcValues.ValuesYaml)
+			arg.FillRenderChartModel(rcValues, rcValues.ChartVersion)
 			changedCharts = append(changedCharts, arg)
 			updatedRcMap[serviceName] = rcValues
 		}
@@ -2945,10 +2973,10 @@ func diffRenderSet(username, productName, envName string, productResp *commonmod
 
 		productSvc := productResp.GetServiceMap()[serviceName]
 		if productSvc != nil {
-			renderChartArgMap[serviceName].FillRenderChartModel(productSvc.GetServiceRender(), productSvc.GetServiceRender().ChartVersion, latestChartInfo.ValuesYaml)
+			renderChartArgMap[serviceName].FillRenderChartModel(productSvc.GetServiceRender(), productSvc.GetServiceRender().ChartVersion)
 			newChartInfos = append(newChartInfos, productSvc.GetServiceRender())
 		} else {
-			renderChartArgMap[serviceName].FillRenderChartModel(latestChartInfo, latestChartInfo.ChartVersion, latestChartInfo.ValuesYaml)
+			renderChartArgMap[serviceName].FillRenderChartModel(latestChartInfo, latestChartInfo.ChartVersion)
 			newChartInfos = append(newChartInfos, latestChartInfo)
 		}
 	}

@@ -144,7 +144,7 @@ type ServiceRender struct {
 	ChartRepo      string `bson:"chart_repo,omitempty"   json:"chart_repo,omitempty"`
 	ChartName      string `bson:"chart_name,omitempty"   json:"chart_name,omitempty"`
 	ChartVersion   string `bson:"chart_version,omitempty"   json:"chart_version,omitempty"`
-	ValuesYaml     string `bson:"values_yaml,omitempty"     json:"values_yaml,omitempty"`       // full helm service values yaml, only record, not actually used in calculation
+	// ValuesYaml     string `bson:"values_yaml,omitempty"     json:"values_yaml,omitempty"`       // full helm service values yaml, only record, not actually used in calculation
 	OverrideValues string `bson:"override_values,omitempty"   json:"override_values,omitempty"` // used for helm services, json-encoded string of kv value
 	// ---- for helm services end ----
 

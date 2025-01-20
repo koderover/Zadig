@@ -369,7 +369,7 @@ func (p *Product) LintServices() {
 				svcMap[key] = svc
 				return true
 			}
-			log.Warnf("service %s has older revision %d, drop it", key, svc.Revision)
+			log.Warnf("%s/%s's service %s has older revision %d, drop it", p.ProductName, p.EnvName, key, svc.Revision)
 			return false
 		}
 		svcMap[key] = svc

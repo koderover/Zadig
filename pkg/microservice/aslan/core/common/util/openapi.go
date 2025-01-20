@@ -41,7 +41,7 @@ func ConvertProductServiceToOpenAPIEnvService(productService *models.ProductServ
 		ReleaseName:    productService.ReleaseName,
 		RenderedYaml:   productService.RenderedYaml,
 		Containers:     ConvertContainerToOpenAPIContainer(productService.Containers),
-		ValuesYaml:     productService.GetServiceRender().ValuesYaml,
+		// ValuesYaml:     productService.GetServiceRender().ValuesYaml,
 		OverrideValues: productService.GetServiceRender().OverrideValues,
 		UpdateTime:     productService.UpdateTime,
 	}

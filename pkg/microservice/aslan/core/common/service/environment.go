@@ -75,7 +75,7 @@ func FillProductTemplateValuesYamls(tmpl *templatemodels.Product, production boo
 		tmpl.ChartInfos = append(tmpl.ChartInfos, &templatemodels.ServiceRender{
 			ServiceName:  svc.ServiceName,
 			ChartVersion: svc.HelmChart.Version,
-			ValuesYaml:   svc.HelmChart.ValuesYaml,
+			// ValuesYaml:   svc.HelmChart.ValuesYaml,
 		})
 	}
 	return nil
