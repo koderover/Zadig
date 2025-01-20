@@ -301,6 +301,7 @@ func SearchBizDirByService(serviceName string, labels []string) ([]*SearchBizDir
 type GetBizDirServiceDetailResponse struct {
 	ProjectName  string   `json:"project_name"`
 	EnvName      string   `json:"env_name"`
+	EnvAlias     string   `json:"env_alias"`
 	Production   bool     `json:"production"`
 	Name         string   `json:"name"`
 	Type         string   `json:"type"`
@@ -337,6 +338,7 @@ func GetBizDirServiceDetail(projectName, serviceName string) ([]GetBizDirService
 			detail := GetBizDirServiceDetailResponse{
 				ProjectName: env.ProductName,
 				EnvName:     env.EnvName,
+				EnvAlias:    env.Alias,
 				Production:  env.Production,
 				Name:        serviceName,
 				Type:        setting.K8SDeployType,
@@ -388,6 +390,7 @@ func GetBizDirServiceDetail(projectName, serviceName string) ([]GetBizDirService
 			detail := GetBizDirServiceDetailResponse{
 				ProjectName: env.ProductName,
 				EnvName:     env.EnvName,
+				EnvAlias:    env.Alias,
 				Production:  env.Production,
 				Name:        fmt.Sprintf("%s(%s)", releaseName, serviceName),
 				Type:        setting.HelmDeployType,
@@ -425,6 +428,7 @@ func GetBizDirServiceDetail(projectName, serviceName string) ([]GetBizDirService
 			detail := GetBizDirServiceDetailResponse{
 				ProjectName: env.ProductName,
 				EnvName:     env.EnvName,
+				EnvAlias:    env.Alias,
 				Production:  env.Production,
 				Name:        serviceName,
 				Type:        project.ProductFeature.DeployType,

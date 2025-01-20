@@ -361,7 +361,7 @@ func (j *DeployJob) SetOptions(approvalTicket *commonmodels.ApprovalTicket) erro
 		envName := strings.ReplaceAll(latestSpec.Env, setting.FixedValueMark, "")
 
 		if approvalTicket == nil || isAllowedEnv(envName, approvalTicket.Envs) {
-			serviceInfo, registryID, err := generateEnvDeployServiceInfo(envName, j.workflow.Project, latestSpec, allowedServices)
+			serviceInfo, envInfo, err := generateEnvDeployServiceInfo(envName, j.workflow.Project, latestSpec, allowedServices)
 			if err != nil {
 				log.Errorf("failed to generate service deployment info for env: %s, error: %s", envName, err)
 				return err
@@ -369,7 +369,9 @@ func (j *DeployJob) SetOptions(approvalTicket *commonmodels.ApprovalTicket) erro
 
 			envOptions = append(envOptions, &commonmodels.ZadigDeployEnvInformation{
 				Env:        envName,
-				RegistryID: registryID,
+				EnvAlias:   envInfo.Alias,
+				Production: envInfo.Production,
+				RegistryID: envInfo.RegistryID,
 				Services:   serviceInfo,
 			})
 		}
@@ -395,7 +397,7 @@ func (j *DeployJob) SetOptions(approvalTicket *commonmodels.ApprovalTicket) erro
 				continue
 			}
 
-			serviceDeployOption, registryID, err := generateEnvDeployServiceInfo(env.EnvName, j.workflow.Project, latestSpec, allowedServices)
+			serviceDeployOption, envInfo, err := generateEnvDeployServiceInfo(env.EnvName, j.workflow.Project, latestSpec, allowedServices)
 			if err != nil {
 				log.Errorf("failed to generate service deployment info for env: %s, error: %s", env.EnvName, err)
 				return err
@@ -403,7 +405,9 @@ func (j *DeployJob) SetOptions(approvalTicket *commonmodels.ApprovalTicket) erro
 
 			envOptions = append(envOptions, &commonmodels.ZadigDeployEnvInformation{
 				Env:        env.EnvName,
-				RegistryID: registryID,
+				EnvAlias:   env.Alias,
+				Production: env.Production,
+				RegistryID: envInfo.RegistryID,
 				Services:   serviceDeployOption,
 			})
 		}
@@ -569,7 +573,7 @@ func (j *DeployJob) UpdateWithLatestSetting() error {
 }
 
 // generateEnvDeployServiceInfo generates the valid deployable service and calculate the visible kvs defined in the spec
-func generateEnvDeployServiceInfo(env, project string, spec *commonmodels.ZadigDeployJobSpec, allowedServices []*commonmodels.ServiceWithModule) ([]*commonmodels.DeployServiceInfo, string, error) {
+func generateEnvDeployServiceInfo(env, project string, spec *commonmodels.ZadigDeployJobSpec, allowedServices []*commonmodels.ServiceWithModule) ([]*commonmodels.DeployServiceInfo, *commonmodels.Product, error) {
 	resp := make([]*commonmodels.DeployServiceInfo, 0)
 	envInfo, err := commonrepo.NewProductColl().Find(&commonrepo.ProductFindOptions{
 		Name:       project,
@@ -578,12 +582,12 @@ func generateEnvDeployServiceInfo(env, project string, spec *commonmodels.ZadigD
 	})
 
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to find env: %s in environments, error: %s", env, err)
+		return nil, nil, fmt.Errorf("failed to find env: %s in environments, error: %s", env, err)
 	}
 
 	projectInfo, err := templaterepo.NewProductColl().Find(project)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to find project %s, err: %v", project, err)
+		return nil, nil, fmt.Errorf("failed to find project %s, err: %v", project, err)
 	}
 
 	envServiceMap := envInfo.GetServiceMap()
@@ -614,7 +618,7 @@ func generateEnvDeployServiceInfo(env, project string, spec *commonmodels.ZadigD
 				Modules:      modules,
 			})
 		}
-		return resp, envInfo.RegistryID, nil
+		return resp, envInfo, nil
 	}
 
 	serviceDefinitionMap := make(map[string]*commonmodels.Service)
@@ -650,7 +654,7 @@ func generateEnvDeployServiceInfo(env, project string, spec *commonmodels.ZadigD
 	}
 
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to list services, error: %s", err)
+		return nil, nil, fmt.Errorf("failed to list services, error: %s", err)
 	}
 
 	for _, service := range serviceDefinitions {
@@ -659,7 +663,7 @@ func generateEnvDeployServiceInfo(env, project string, spec *commonmodels.ZadigD
 
 	envServices, err := commonservice.ListServicesInEnv(env, project, svcKVsMap, log.SugaredLogger())
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to list envService, error: %s", err)
+		return nil, nil, fmt.Errorf("failed to list envService, error: %s", err)
 	}
 
 	envServiceMap2 := map[string]*commonservice.EnvService{}
@@ -700,7 +704,7 @@ func generateEnvDeployServiceInfo(env, project string, spec *commonmodels.ZadigD
 
 		svcInfo, err := FilterServiceVars(service.ServiceName, spec.DeployContents, deployServiceMap[service.ServiceName], envServiceMap2[service.ServiceName])
 		if err != nil {
-			return nil, "", e.ErrFilterWorkflowVars.AddErr(err)
+			return nil, nil, e.ErrFilterWorkflowVars.AddErr(err)
 		}
 
 		item := &commonmodels.DeployServiceInfo{
@@ -764,12 +768,12 @@ func generateEnvDeployServiceInfo(env, project string, spec *commonmodels.ZadigD
 		})
 
 		if err != nil {
-			return nil, "", fmt.Errorf("failed to find default registry for env: %s, error: %s", env, err)
+			return nil, nil, fmt.Errorf("failed to find default registry for env: %s, error: %s", env, err)
 		}
 		envInfo.RegistryID = registry.ID.Hex()
 	}
 
-	return resp, envInfo.RegistryID, nil
+	return resp, envInfo, nil
 }
 
 func (j *DeployJob) MergeArgs(args *commonmodels.Job) error {

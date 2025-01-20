@@ -396,6 +396,8 @@ func GetMyEnvironment(projectName, envName string, production bool, username, us
 
 	return &EnvResponse{
 		Name:        envName,
+		Alias:       envInfo.Alias,
+		Production:  envInfo.Production,
 		ProjectName: projectName,
 		UpdateTime:  envInfo.UpdateTime,
 		UpdatedBy:   envInfo.UpdateBy,

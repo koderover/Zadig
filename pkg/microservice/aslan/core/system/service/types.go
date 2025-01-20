@@ -145,6 +145,8 @@ type WorkflowResponse struct {
 
 type EnvResponse struct {
 	Name        string          `json:"name"`
+	Alias       string          `json:"alias"`
+	Production  bool            `json:"production"`
 	ProjectName string          `json:"project_name"`
 	UpdateTime  int64           `json:"update_time"`
 	UpdatedBy   string          `json:"updated_by"`

@@ -390,6 +390,8 @@ type ServiceAndVMDeploy struct {
 
 type ZadigVMDeployJobSpec struct {
 	Env                 string                         `bson:"env"                    yaml:"env"                    json:"env"`
+	Production          bool                           `bson:"-"                      yaml:"-"                  json:"production"`
+	EnvAlias            string                         `bson:"-"                      yaml:"-"                         json:"env_alias"`
 	EnvOptions          []*ZadigVMDeployEnvInformation `bson:"-"                      yaml:"env_options"            json:"env_options"`
 	S3StorageID         string                         `bson:"s3_storage_id"          yaml:"s3_storage_id"          json:"s3_storage_id"`
 	ServiceAndVMDeploys []*ServiceAndVMDeploy          `bson:"service_and_vm_deploys" yaml:"service_and_vm_deploys" json:"service_and_vm_deploys"`
@@ -403,6 +405,8 @@ type ZadigVMDeployJobSpec struct {
 
 type ZadigHelmChartDeployJobSpec struct {
 	Env                string                           `bson:"env"                      yaml:"env"                         json:"env"`
+	Production         bool                             `bson:"-"                        yaml:"-"                  json:"production"`
+	EnvAlias           string                           `bson:"-"                        yaml:"-"                         json:"env_alias"`
 	EnvOptions         []*ZadigHelmDeployEnvInformation `bson:"-"                        yaml:"env_options"                 json:"env_options"`
 	EnvSource          string                           `bson:"env_source"               yaml:"env_source"                  json:"env_source"`
 	SkipCheckRunStatus bool                             `bson:"skip_check_run_status"    yaml:"skip_check_run_status"       json:"skip_check_run_status"`
@@ -717,6 +721,8 @@ type K8sPatchJobSpec struct {
 
 type ZadigDeployEnvInformation struct {
 	Env        string               `json:"env"         yaml:"env"`
+	EnvAlias   string               `json:"env_alias"       yaml:"env_alias"`
+	Production bool                 `json:"production"  yaml:"production"`
 	RegistryID string               `json:"registry_id" yaml:"registry_id"`
 	Services   []*DeployServiceInfo `json:"services"    yaml:"services"`
 }
